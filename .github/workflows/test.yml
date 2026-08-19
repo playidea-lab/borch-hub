@@ -1,8 +1,18 @@
-# 컴파일과 파서 검사. PR 마다 돈다.
+# 컴파일과 검사. PR 마다 돈다.
 #
-# borch 여러 버전에 대한 매트릭스는 아직 없다 — borch 가 npm 에 나가지 않아서
-# 걸 대상이 없다. 코어가 공개되면 여기가 그 자리다. 이 저장소를 코어와 갈라 놓은
-# 이유 중 하나가 그 매트릭스이므로, 잊지 않도록 적어 둔다.
+# ## 왜 두 갈래인가
+#
+# 카탈로그(`src/models/`)는 코어의 nn 층 위에 서므로 **코어 없이는 타입 검사가
+# 안 된다.** 그런데 코어는 아직 private 이고 npm 에도 없어서 러너가 그냥 받을 수가
+# 없다 — 조직 안의 다른 저장소를 읽으려면 기본 GITHUB_TOKEN 으로는 안 되고 별도
+# 토큰이 필요하다.
+#
+# 그래서 토큰이 있으면 코어를 받아 전부 보고, 없으면 **코어와 무관한 부분까지는
+# 보고** 경고를 남긴다. 말없이 건너뛰면 초록색이 "다 봤다"로 읽히는데, 안 본 것이
+# 있으면 그건 거짓말이다.
+#
+# 토큰 이름: CORE_REPO_TOKEN (playidea-lab/borch 읽기 권한).
+# `borch` 가 npm 에 나가는 날 이 갈래는 통째로 사라진다.
 name: 검사
 
 on:
@@ -20,4 +30,30 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: npm test
+
+      - name: 코어 받기
+        id: core
+        if: ${{ secrets.CORE_REPO_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: playidea-lab/borch
+          token: ${{ secrets.CORE_REPO_TOKEN }}
+          path: core-checkout
+
+      # tsconfig 의 paths 가 `../borch` 를 본다. 러너의 작업 디렉터리 옆으로 옮기면
+      # 로컬에서 나란히 받아둔 것과 같은 배치가 된다.
+      - name: 코어 빌드
+        if: steps.core.outcome == 'success'
+        run: |
+          mv core-checkout ../borch
+          cd ../borch && npm ci && npm run build:ts
+
+      - name: 검사 (카탈로그 포함)
+        if: steps.core.outcome == 'success'
+        run: npm test
+
+      - name: 검사 (코어 없음 — 카탈로그 제외)
+        if: steps.core.outcome != 'success'
+        run: |
+          echo "::warning::CORE_REPO_TOKEN 이 없어 카탈로그 타입 검사를 못 돌렸다. 매니페스트 파서와 인자 검사만 확인됨."
+          npm run test:nocore

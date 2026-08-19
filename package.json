@@ -25,7 +25,8 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build",
-    "test": "tsc -p tsconfig.json && node --test dist/test/*.js"
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.js",
+    "test:nocore": "tsc -p tsconfig.nocore.json && node --test dist/test/*.js"
   },
   "//": [
     "version 0.0.0 이다 — 아직 아무것도 나가지 않았다. 0.1.0 으로 시작하면 없던 이력을",
@@ -47,8 +48,9 @@
     "수와 실측을 대조해 낡으면 실패시킨다. 모델이 늘 때마다 그 수가 오르면 안 된다."
   ],
   "devDependencies": {
-    "typescript": "^5.9.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@webgpu/types": "^0.1.71",
+    "typescript": "^5.9.0"
   },
   "peerDependenciesMeta": {
     "borch": {

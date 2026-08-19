@@ -1,0 +1,12 @@
+{
+  // 코어(`borch`)를 못 받는 자리에서 **볼 수 있는 데까지는 보는** 설정.
+  //
+  // 카탈로그는 코어의 nn 층 위에 서므로 코어 없이 타입 검사가 안 된다. 그렇다고
+  // 전부 포기하면 매니페스트 파서와 인자 검사까지 안 보게 되는데, 그 둘은 코어와
+  // 아무 상관이 없다. 볼 수 있는 것을 안 보는 것은 절약이 아니다.
+  //
+  // 이 파일은 임시다. `borch` 가 npm 에 나가면 러너가 그냥 설치하면 되고,
+  // 그때 tsconfig.json 의 paths 와 함께 사라진다.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/index.ts", "src/models/registry.ts", "src/models/resnet.ts"]
+}
