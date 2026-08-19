@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    // 코어(`borch`)와 같은 설정이다. 갈리면 코어에서 통과한 코드가 여기서 안 되거나
+    // 그 반대가 되는데, 그 차이는 컴파일러가 아니라 사용자가 발견하게 된다.
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "outDir": "dist",
+    "rootDir": ".",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "declaration": true,
+    "sourceMap": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "borch-hub",
+  "version": "0.0.0",
+  "description": "borch 런타임이 바로 불러 돌릴 수 있는 모델의 배포·검증 클라이언트",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist/src",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "borch": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.js"
+  },
+  "//": [
+    "version 0.0.0 이다 — 아직 아무것도 나가지 않았다. 0.1.0 으로 시작하면 없던 이력을",
+    "있는 것처럼 적는 것이 된다. 코어 npm `borch` 가 같은 이유로 0.1.0 에서 시작했다.",
+    "",
+    "borch 는 peerDependency 다. 이 패키지가 borch 를 **끌고 오면** 사용자의 borch 와",
+    "두 벌이 되고, 텐서 두 벌은 같은 GPU 장치를 공유하지 않아 조용히 안 맞는다.",
+    "쓰는 쪽이 이미 깔아둔 것을 쓴다.",
+    "",
+    "borch 0.1.0 은 아직 npm 에 없다. 코어 공개와 같이 열기로 했으므로 그때까지",
+    "이 의존은 못 푼다 — 알고 적어둔 것이지 빠뜨린 것이 아니다.",
+    "",
+    "카탈로그(모델 구조 코드)를 코어에 넣지 않고 여기 두는 이유는 번들 크기다.",
+    "코어가 싣는 ES 모듈이 압축 전 770KB 이고 `tests/test_site.py` 가 문서에 적힌",
+    "수와 실측을 대조해 낡으면 실패시킨다. 모델이 늘 때마다 그 수가 오르면 안 된다."
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^22.0.0"
+  }
+}

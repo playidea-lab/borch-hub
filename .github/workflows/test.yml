@@ -1,0 +1,23 @@
+# 컴파일과 파서 검사. PR 마다 돈다.
+#
+# borch 여러 버전에 대한 매트릭스는 아직 없다 — borch 가 npm 에 나가지 않아서
+# 걸 대상이 없다. 코어가 공개되면 여기가 그 자리다. 이 저장소를 코어와 갈라 놓은
+# 이유 중 하나가 그 매트릭스이므로, 잊지 않도록 적어 둔다.
+name: 검사
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
