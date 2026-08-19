@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+  카탈로그의 ResNet-18 과 코어 벤치의 것을 대조한다.
+
+      npm run build:ts   (옆의 코어에서)
+      npm run build      (여기서)
+      npm run parity
+
+  값이 아니라 `stateDict` 의 열쇠와 모양을 본다. 소프트웨어 어댑터에서도 유효한
+  검사다 — 모양은 장치가 안 바꾼다. 그래서 창을 안 띄워도 된다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>borch-hub — 카탈로그 대조</title>
+  <style>
+    body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; }
+    pre { white-space: pre-wrap; }
+  </style>
+
+  <!--
+    `borch` 는 아직 npm 에 없으므로 브라우저가 이름만으로는 못 찾는다. 임포트 맵이
+    그 이름을 옆에 받아둔 코어의 방출물로 잇는다 — tsconfig 의 paths 가 타입 쪽에서
+    하는 일과 같은 것을 런타임 쪽에서 한다. borch 가 npm 에 나가면 둘 다 사라진다.
+
+    `@core/bench` 는 코어의 **벤치 모듈**이다. 공개된 진입점이 아니고 앞으로도 아니다 —
+    이 대조 검사 하나를 위해서만 있는 개발용 이름이다.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "borch": "/borch/borch-ts/dist/src/index.js",
+      "@core/bench": "/borch/borch-ts/dist/test/bench.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>borch-hub — 카탈로그 대조</h1>
+  <pre id="out">대조 중…</pre>
+  <script type="module">
+    import { report } from "/borch-hub/dist/browser/parity.js";
+
+    const out = document.getElementById("out");
+    try {
+      const result = await report();
+      // 러너가 읽는 자리를 사람이 읽는 글과 따로 둔다. 글에서 파내는 것은
+      // 붙였다 떨어지는 연결이다.
+      window.__borchHubParity = result;
+      out.textContent = result.text;
+    } catch (err) {
+      const detail = err && err.stack ? err.stack : String(err);
+      window.__borchHubParity = { ok: false, text: `대조하지 못했다: ${detail}`, adapter: "" };
+      out.textContent = `대조하지 못했다: ${detail}`;
+    }
+  </script>
+</body>
+</html>

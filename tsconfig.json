@@ -15,7 +15,13 @@
     // 컴파일러가 "Cannot find module 'borch'" 라고 말하는데, 그것이 정확한
     // 진단이다. borch 가 npm 에 나가는 날 이 두 줄은 사라진다.
     "baseUrl": ".",
-    "paths": { "borch": ["../borch/borch-ts/dist/src/index.d.ts"] },
+    // `@core/bench` 는 코어의 벤치 모듈이다. 공개된 진입점이 아니고 앞으로도
+    // 아니다 — 카탈로그가 코어의 정의와 갈리지 않았는지 보는 대조 검사 하나를
+    // 위해서만 있는 개발용 이름이다. 브라우저 쪽 임포트 맵이 같은 이름을 잇는다.
+    "paths": {
+      "borch": ["../borch/borch-ts/dist/src/index.d.ts"],
+      "@core/bench": ["../borch/borch-ts/dist/test/bench.d.ts"]
+    },
     "lib": ["ES2022", "DOM"],
     // WebGPU 타입은 아직 TypeScript 의 기본 DOM 라이브러리에 없다. 코어의 선언
     // 파일이 `GPUBuffer` 같은 이름을 그대로 쓰므로, 없으면 **코어를 읽는 자리에서**
@@ -37,5 +43,5 @@
     "sourceMap": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "browser/**/*.ts"]
 }

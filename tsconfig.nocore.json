@@ -8,5 +8,5 @@
   // 이 파일은 임시다. `borch` 가 npm 에 나가면 러너가 그냥 설치하면 되고,
   // 그때 tsconfig.json 의 paths 와 함께 사라진다.
   "extends": "./tsconfig.json",
-  "exclude": ["src/index.ts", "src/models/registry.ts", "src/models/resnet.ts"]
+  "exclude": ["src/index.ts", "src/models/registry.ts", "src/models/resnet.ts", "browser"]
 }

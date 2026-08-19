@@ -26,7 +26,8 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.js",
-    "test:nocore": "tsc -p tsconfig.nocore.json && node --test dist/test/*.js"
+    "test:nocore": "tsc -p tsconfig.nocore.json && node --test dist/test/*.js",
+    "parity": "uv run --with playwright python browser/parity.py"
   },
   "//": [
     "version 0.0.0 이다 — 아직 아무것도 나가지 않았다. 0.1.0 으로 시작하면 없던 이력을",
