@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  첫 화물을 만든다. 러너가 띄우므로 손으로 열 일은 없다.
+
+  **창을 띄워야 한다.** 헤드리스는 소프트웨어 어댑터를 주고, 그러면 한 시간짜리가
+  하루가 된다. 페이지가 어댑터 이름을 먼저 찍으므로 결과에 그것이 같이 남는다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>borch-hub — 학습</title>
+  <style>
+    body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "borch": "/borch/borch-ts/dist/src/index.js",
+      "@core/accuracy": "/borch/borch-ts/dist/test/accuracy.js",
+      "@core/bench": "/borch/borch-ts/dist/test/bench.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>borch-hub — 학습</h1>
+  <pre id="out">데이터를 받는 중…</pre>
+  <script type="module">
+    import { DEFAULTS, decodeCifar, run } from "/borch-hub/dist/browser/train.js";
+
+    const out = document.getElementById("out");
+    const params = new URLSearchParams(location.search);
+    const number = (key, fallback) => {
+      const raw = params.get(key);
+      return raw === null ? fallback : Number(raw);
+    };
+
+    /** 404 에 안 던지는 fetch 를 그대로 쓰면 HTML 을 데이터로 읽는다. */
+    const grab = async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`받지 못했다: ${res.status} ${url}`);
+      return new Uint8Array(await res.arrayBuffer());
+    };
+
+    /** 여러 덩이를 하나의 split 으로 잇는다. 원본이 5개로 나뉘어 있다. */
+    const joinSplits = (splits) => {
+      if (splits.length === 1) return splits[0];
+      const n = splits.reduce((a, s) => a + s.n, 0);
+      const x = new Float32Array(n * 3 * 32 * 32);
+      const y = new Int32Array(n);
+      let at = 0, row = 0;
+      for (const s of splits) {
+        x.set(s.x, at); y.set(s.y, row);
+        at += s.x.length; row += s.n;
+      }
+      return { x, y, n };
+    };
+
+    try {
+      const batches = (params.get("batches") ?? "1").split(",");
+      const trainSplits = [];
+      for (const b of batches) {
+        out.textContent = `데이터를 받는 중… (${b})`;
+        trainSplits.push(decodeCifar(await grab(`/borch/cifar-batch${b}.bin`)));
+      }
+      const cap = number("images", 0);
+      // 장수를 줄이는 것은 **길을 확인하는 실행**을 위한 것이다. 정확도는 이때
+      // 아무 뜻이 없다.
+      const cut = (s) => cap
+        ? { x: s.x.subarray(0, cap * 3 * 32 * 32), y: s.y.subarray(0, cap), n: cap }
+        : s;
+      const train = cut(joinSplits(trainSplits));
+      // 시험 데이터는 **학습에 안 쓴 것**이어야 한다. 원본의 test_batch 를 따로 쓴다.
+      const test = cut(decodeCifar(await grab("/borch/cifar-batch-test.bin")));
+
+      const opts = {
+        ...DEFAULTS,
+        epochs: number("epochs", DEFAULTS.epochs),
+        batch: number("batch", DEFAULTS.batch),
+        augment: (params.get("augment") ?? "on") === "on",
+      };
+
+      const lines = [`학습 ${train.n}장 / 시험 ${test.n}장`];
+      out.textContent = `${lines[0]}\n학습 중…`;
+
+      const cargo = await run(train, test, opts, (line) => {
+        // 긴 실행은 도중에 죽으면 반환값이 통째로 사라진다. 흘려보낸 것만 남는다.
+        console.log(`[train] ${line}`);
+        lines.push(line);
+        out.textContent = lines.join("\n");
+      });
+
+      // 바이트는 여기 두고, 러너가 이름을 불러 하나씩 받아간다. 45MB 를 요약에
+      // 실어 보내면 그 왕복 하나가 몇 십 초다.
+      const files = cargo.files;
+      window.__emit = (name) => {
+        const bytes = files[name];
+        if (!bytes) throw new Error(`그런 파일이 없다: ${name}`);
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        return name;
+      };
+
+      const { files: _drop, ...summary } = cargo;
+      window.__borchHubTrain = { ...summary, names: Object.keys(files), trainImages: train.n };
+      out.textContent = `${lines.join("\n")}\n\n끝. 러너가 파일을 받아간다.`;
+    } catch (err) {
+      const detail = err && err.stack ? err.stack : String(err);
+      window.__borchHubTrain = { error: detail };
+      out.textContent = `학습하지 못했다: ${detail}`;
+    }
+  </script>
+</body>
+</html>
