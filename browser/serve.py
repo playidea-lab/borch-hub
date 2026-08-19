@@ -22,9 +22,12 @@ import threading
 HUB = pathlib.Path(__file__).resolve().parents[1]
 PARENT = HUB.parent
 CORE = PARENT / "borch"
+REGISTRY = PARENT / "borch-hub-registry"
 
-# 얹는 것은 이 둘뿐이다.
-ALLOWED = (HUB.name, CORE.name)
+# 얹는 것은 이 셋뿐이다. 레지스트리가 여기 있는 이유는 **진짜 배치가 그 모양**이기
+# 때문이다 — 매니페스트와 샘플은 레지스트리에서 오고 가중치만 CDN 에서 온다.
+# 로컬에서 그 모양대로 돌려봐야 상대·절대 주소가 섞인 자리가 실제로 걸린다.
+ALLOWED = (HUB.name, CORE.name, REGISTRY.name)
 
 
 class _Handler(http.server.SimpleHTTPRequestHandler):

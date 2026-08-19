@@ -7,6 +7,14 @@
 주소로 받고, 길이를 보고, 해시를 대조하고, 통에 넣는다. 다른 것은 왕복 시간뿐이고
 이 검사는 그것을 안 잰다.
 
+발행한 뒤에는 **레지스트리에 쓴 매니페스트 그대로** 돌린다:
+
+    npm run roundtrip -- --manifest models/cifar10-resnet18/1.0.0/manifest.json
+
+그때 가중치는 진짜 CDN 에서 오고 샘플은 레지스트리에서 온다. 우리가 쓴 매니페스트를
+우리가 만든 로더가 실제로 소화하는지는 그렇게만 확인된다 — 여기서 매니페스트를 지어
+쓰면 검사가 자기 자신을 보는 것이 된다.
+
 매니페스트는 여기서 쓴다. 가중치 주소는 **절대 주소**(서버가 방금 잡은 포트)로,
 샘플 주소는 **상대 주소**로 적는다 — 진짜 배치가 그 모양이고(가중치는 CDN, 샘플은
 매니페스트 옆), 로더가 둘 다 풀 줄 아는지 여기서 걸린다.
@@ -16,9 +24,17 @@ import json
 import sys
 
 from launch import browser as browser_of
-from serve import HUB, serve
+from serve import HUB, REGISTRY, serve
 
 TIMEOUT_MS = 600_000
+
+
+def _registry_manifest(port: int, rel: str) -> str:
+    """레지스트리에 있는 매니페스트를 그 자리에서 얹어 준다."""
+    path = REGISTRY / rel
+    if not path.exists():
+        raise SystemExit(f"레지스트리에 없다: {path}")
+    return f"http://127.0.0.1:{port}/{path.relative_to(REGISTRY.parent).as_posix()}"
 
 
 def main(argv: list[str]) -> int:
@@ -28,18 +44,24 @@ def main(argv: list[str]) -> int:
     # 이유가 통째로 무의미해진다. 실측으로 걸렸다: 25 분 동안 0 바이트였다.
     sys.stdout.reconfigure(line_buffering=True)
 
+    given = argv[argv.index("--manifest") + 1] if "--manifest" in argv else None
     out = HUB / "out" / "dry" if "--dry" in argv else HUB / "out"
     summary_path = out / "summary.json"
-    if not summary_path.exists():
+    if given is None and not summary_path.exists():
         print(f"화물이 없다: {summary_path}\n  먼저: npm run train", file=sys.stderr)
         return 2
     if not (HUB / "dist" / "browser" / "roundtrip.js").exists():
         print("방출물이 없다 — 먼저: npm run build", file=sys.stderr)
         return 2
 
-    summary = json.loads(summary_path.read_text())
     port, stop = serve()
     try:
+        if given is not None:
+            manifest_url = _registry_manifest(port, given)
+            print(f"레지스트리의 매니페스트로 돈다: {given}")
+            return _run(port, manifest_url, argv)
+
+        summary = json.loads(summary_path.read_text())
         rel = out.relative_to(HUB.parent).as_posix()
         base = f"http://127.0.0.1:{port}/{rel}"
         manifest = {
@@ -68,7 +90,14 @@ def main(argv: list[str]) -> int:
             "attestation": None,
         }
         (out / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+        return _run(port, f"{base}/manifest.json", argv)
+    finally:
+        stop()
 
+
+def _run(port: int, manifest_url: str, argv: list[str]) -> int:
+    """페이지를 띄워 왕복을 시키고 보고서를 찍는다."""
+    if True:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p, browser_of(p, headed="--headed" in argv) as browser:
@@ -77,11 +106,9 @@ def main(argv: list[str]) -> int:
             page.on("pageerror", lambda e: print(f"  [브라우저 예외] {e}"))
             page.on("console", lambda m: print(f"  {m.text}") if m.type == "error" else None)
             page.goto(f"http://127.0.0.1:{port}/borch-hub/browser/roundtrip.html"
-                      f"?manifest={base}/manifest.json")
+                      f"?manifest={manifest_url}")
             page.wait_for_function("window.__borchHubRoundtrip !== undefined", timeout=TIMEOUT_MS)
             result = page.evaluate("window.__borchHubRoundtrip")
-    finally:
-        stop()
 
     print(result["text"])
     return 0 if result["ok"] else 1
