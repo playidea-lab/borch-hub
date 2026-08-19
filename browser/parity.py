@@ -16,6 +16,12 @@ TIMEOUT_MS = 120_000
 
 
 def main(argv: list[str]) -> int:
+    # **줄 단위로 흘려보낸다.** 파이프로 나갈 때 파이썬 stdout 은 블록 버퍼링이라
+    # 진행 줄이 몇 KB 쌓일 때까지 안 나온다. 한 시간짜리 실행에서 그것은 "아무것도
+    # 안 보이는 한 시간" 이고, 도중에 죽으면 흘려보낸 것마저 사라진다 — 흘려보내는
+    # 이유가 통째로 무의미해진다. 실측으로 걸렸다: 25 분 동안 0 바이트였다.
+    sys.stdout.reconfigure(line_buffering=True)
+
     built = HUB / "dist" / "browser" / "parity.js"
     if not built.exists():
         print(f"방출물이 없다: {built}\n  먼저: npm run build", file=sys.stderr)
