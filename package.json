@@ -36,7 +36,11 @@
     "쓰는 쪽이 이미 깔아둔 것을 쓴다.",
     "",
     "borch 0.1.0 은 아직 npm 에 없다. 코어 공개와 같이 열기로 했으므로 그때까지",
-    "이 의존은 못 푼다 — 알고 적어둔 것이지 빠뜨린 것이 아니다.",
+    "이 의존은 못 푼다 — 알고 적어둔 것이지 빠뜨린 것이 아니다. 그래서 지금은",
+    "peerDependenciesMeta 로 **optional** 이다: 없는 패키지를 필수 peer 로 두면 npm 이",
+    "lockfile 조차 못 만들고 404 로 멈춰서 CI 가 아예 안 돈다(실측). borch 가 npm 에",
+    "나가는 날 이 optional 을 걷어내야 한다 — 안 걷으면 borch 없이 설치한 사람이",
+    "경고 하나 없이 진행하다 첫 텐서에서 만난다.",
     "",
     "카탈로그(모델 구조 코드)를 코어에 넣지 않고 여기 두는 이유는 번들 크기다.",
     "코어가 싣는 ES 모듈이 압축 전 770KB 이고 `tests/test_site.py` 가 문서에 적힌",
@@ -45,5 +49,10 @@
   "devDependencies": {
     "typescript": "^5.9.0",
     "@types/node": "^22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "borch": {
+      "optional": true
+    }
   }
 }
