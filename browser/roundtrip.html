@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- 만든 화물을 다시 받아 되싣고 대조한다. 러너가 띄운다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>borch-hub — 왕복</title>
+  <style>
+    body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script type="importmap">
+  { "imports": { "borch": "/borch/borch-ts/dist/src/index.js" } }
+  </script>
+</head>
+<body>
+  <h1>borch-hub — 왕복</h1>
+  <pre id="out">받는 중…</pre>
+  <script type="module">
+    import { report } from "/borch-hub/dist/browser/roundtrip.js";
+
+    const out = document.getElementById("out");
+    const manifest = new URLSearchParams(location.search).get("manifest");
+    try {
+      if (!manifest) throw new Error("manifest 주소가 없다");
+      const result = await report(manifest);
+      window.__borchHubRoundtrip = result;
+      out.textContent = result.text;
+    } catch (err) {
+      const detail = err && err.stack ? err.stack : String(err);
+      window.__borchHubRoundtrip = { ok: false, text: `왕복하지 못했다: ${detail}` };
+      out.textContent = `왕복하지 못했다: ${detail}`;
+    }
+  </script>
+</body>
+</html>
