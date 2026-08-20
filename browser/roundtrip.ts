@@ -85,6 +85,31 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     const scores = await noGrad(() => loaded.model.forward(x)).toArray();
     const read = readOutput(manifest, [...scores]);
     const want = manifest.outputs?.classes?.[truth] ?? String(truth);
+    // **크기가 다른 이미지도 넣어 본다.** 우리 모델은 resize 가 null 이라 그 경로가
+    // 한 번도 안 지나간다 — 안 지나가는 코드는 없는 코드와 구별이 안 된다.
+    // 매니페스트를 손에서 고쳐 resize·centerCrop 을 켜고, 64×64 를 넣는다.
+    const asked = {
+      ...manifest,
+      preprocess: {
+        ...manifest.preprocess,
+        resize: { shortSide: height, interpolation: "bilinear" as const },
+        centerCrop: [height, width] as readonly [number, number],
+      },
+    };
+    const big = new Float64Array(64 * 64 * 3);
+    for (let i = 0; i < big.length; i++) big[i] = (i * 7) % 256;
+    const grown = vision.image(big, 64, 64, 3, true);
+    let resized: string | null = null;
+    try {
+      const t = transformFor(asked)(grown);
+      resized = `${t.shape.join("x")}`;
+    } catch (err) {
+      resized = `막혔다: ${String(err)}`;
+    }
+    add("크기가 다른 이미지는 매니페스트가 말한 대로 맞춰진다",
+      resized === `1x${manifest.preprocess.inputSize.join("x")}`,
+      resized ?? "(없음)");
+
     add("진짜 이미지 한 장에서 이름이 나온다", read.label !== null,
       read.label === null
         ? "이름이 안 나왔다 — 매니페스트가 classes 를 안 적었다"

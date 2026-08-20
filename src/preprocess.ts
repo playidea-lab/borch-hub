@@ -27,16 +27,12 @@ import { BorchHubError, type Manifest, type Preprocess } from "./manifest.js";
  * 배지가 아니라 사과다.
  */
 export function preprocessGaps(pre: Preprocess): readonly string[] {
+  // 한동안 여기서 `resize`·`centerCrop` 을 거절했다 — borch 에 그 둘이 없었다.
+  // 지금은 있고(안티에일리어싱까지 torchvision 과 같은 값을 낸다), 그래서 이 함수가
+  // 세는 것은 **남은 것**뿐이다. 못 하는 것이 없어졌다고 이 함수를 지우지 않는 이유는
+  // 다음에 또 생기기 때문이다 — 받기 전에 묻는 자리가 있어야 45MB 를 받고 나서
+  // 사과하지 않는다.
   const gaps: string[] = [];
-  // **borch 에 Resize 가 없다**(실측: vision.ts 는 ToTensor·Normalize·RandomCrop·
-  // RandomHorizontalFlip 뿐이다). 스펙은 적을 수 있게 두되, 못 하는 것을 할 수
-  // 있는 척하지 않는다.
-  if (pre.resize !== null) {
-    gaps.push(`resize (shortSide ${pre.resize.shortSide}) — borch has no Resize yet`);
-  }
-  if (pre.centerCrop !== null) {
-    gaps.push(`centerCrop [${pre.centerCrop.join(", ")}] — borch has no CenterCrop yet`);
-  }
   if (pre.mean.length !== pre.inputSize[0] || pre.std.length !== pre.inputSize[0]) {
     gaps.push(
       `mean/std have ${pre.mean.length}/${pre.std.length} entries `
@@ -70,20 +66,36 @@ export function transformFor(manifest: Manifest): (img: vision.Image) => Tensor 
     );
   }
 
+  // **순서가 torchvision 의 평가 파이프라인 그대로다** — 크기를 맞추고, 가운데를
+  // 자르고, 텐서로 만들고, 정규화한다. 뒤바꾸면 자르는 자리가 달라진다.
+  const before: vision.Transform[] = [];
+  if (pre.resize !== null) {
+    before.push(new vision.Resize(pre.resize.shortSide, pre.resize.interpolation));
+  }
+  if (pre.centerCrop !== null) {
+    before.push(new vision.CenterCrop([pre.centerCrop[0], pre.centerCrop[1]]));
+  }
   const steps = new vision.Compose([
+    ...before,
     new vision.ToTensor(),
     new vision.Normalize([...pre.mean], [...pre.std]),
   ]);
   const [channels, height, width] = pre.inputSize;
+  // 크기를 맞추는 단계가 하나도 없으면 들어온 것이 이미 맞아야 한다. 말없이
+  // 늘리거나 줄이지 않는다 — 어느 방법으로 할지는 매니페스트가 정할 일이다.
+  const sized = before.length > 0;
 
   return (img: vision.Image): Tensor => {
-    if (img.height !== height || img.width !== width || img.channels !== channels) {
-      // 크기를 말없이 맞추지 않는다 — 맞추는 방법이 없고(Resize 가 없다),
-      // 있더라도 어느 방법인지는 매니페스트가 정할 일이다.
+    if (!sized && (img.height !== height || img.width !== width)) {
       throw new BorchHubError(
         `${manifest.name} takes ${channels}x${height}x${width}, `
-        + `but the image is ${img.channels}x${img.height}x${img.width}. `
-        + "This runtime cannot resize.",
+        + `but the image is ${img.channels}x${img.height}x${img.width}, `
+        + "and this manifest asks for no resize or crop.",
+      );
+    }
+    if (img.channels !== channels) {
+      throw new BorchHubError(
+        `${manifest.name} takes ${channels} channels, but the image has ${img.channels}.`,
       );
     }
     const out = steps.apply(img);
