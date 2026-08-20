@@ -14,6 +14,13 @@
  * 잡는다). 그래서 합치는 대신 **대조한다**: 두 모델의 `stateDict` 열쇠와 모양이
  * 같은지 보는 검사가 붙는다. 갈리는 것을 막을 수 없으면 갈린 것을 잡는다.
  *
+ * ## 이름이 CIFAR 판임을 말한다
+
+ * `resnet18` 이라고 부르면 ImageNet 판이 올 자리를 미리 먹는다. 둘은 스템부터
+ * 다르고 가중치가 안 호환되므로, 같은 이름 아래 인자로 가르면 옛 매니페스트가
+ * 어느 날 다른 모델을 만든다.
+
+ *
  * ## 왜 CIFAR 판인가
  *
  * 3×3 스템에 맥스풀이 없다. 32×32 를 7×7 스템과 풀링으로 받으면 8×8 로 줄어
@@ -78,7 +85,7 @@ const FINAL_CHANNELS = STEM_CHANNELS * 8;
  * 안 배우게 만든 것이다. `stateDict` 열쇠도 이 필드 이름에서 나오므로, 이름을
  * 바꾸면 **이미 배포된 가중치가 안 실린다.**
  */
-export class ResNet18 extends nn.Module {
+export class ResNet18Cifar extends nn.Module {
   private readonly stem: nn.Conv2d;
   private readonly bn: nn.BatchNormND;
   private readonly body: nn.Sequential;

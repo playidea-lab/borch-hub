@@ -23,17 +23,25 @@ export {
   type EnvironmentReport, type Loaded, type LoadOptions,
 } from "./load.js";
 export { verify, type VerifyResult } from "./verify.js";
+export {
+  preprocessGaps, readOutput, transformFor, type Reading,
+} from "./preprocess.js";
 export { sha256Hex } from "./hash.js";
 
-export { createModel, factories, factorySpec } from "./models/registry.js";
+export {
+  createModel, createModelFor, factories, factorySpec, type FactoryName,
+} from "./models/registry.js";
 export { checkArgs, type ArgSpec, type FactoryArgs } from "./models/args.js";
-export { BasicBlock, ResNet18 } from "./models/resnet.js";
+export { BasicBlock, ResNet18Cifar } from "./models/resnet.js";
 
 export {
   BorchHubError,
   SCHEMA_VERSION,
+  SCHEMA_VERSIONS,
   parseManifest,
   type Arch,
+  type Outputs,
+  type Preprocess,
   type License,
   type Manifest,
   type Metrics,

@@ -11,7 +11,10 @@
 
 import { init } from "borch";
 
-import { createModel, load, fetchManifest, BorchHubError } from "../src/index.js";
+import {
+  createModelFor, load, fetchManifest, readOutput, transformFor, BorchHubError,
+} from "../src/index.js";
+import { noGrad, vision } from "borch";
 import { verify } from "../src/verify.js";
 
 export interface Check {
@@ -58,11 +61,41 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
   }
   add("받은 바이트가 통에 남는다", cached, cached ? "다음 방문은 안 받는다" : "통에 없다");
 
+  // --- **쓸 수 있는가** ------------------------------------------------
+  //
+  // 여기까지는 전부 "실린다" 의 증명이다. 샘플 대조가 통과해도 받는 쪽은 자기
+  // 이미지를 어떤 텐서로 만들어야 하는지 모를 수 있다 — 첫 화물이 정확히 그
+  // 상태였다. 그래서 **매니페스트가 말한 대로만** 해서 이름이 나오는지 본다.
+  if (manifest.preprocess !== null) {
+    const [, height, width] = manifest.preprocess.inputSize;
+    // CIFAR 시험 덩이의 첫 장. 라벨은 바이트 하나로 앞에 붙어 있다.
+    const raw = new Uint8Array(await (await fetch("/borch/cifar-batch-test.bin")).arrayBuffer());
+    const truth = raw[0] ?? 0;
+    const pixels = new Float64Array(height * width * 3);
+    // 저장이 R 판 · G 판 · B 판 순서다. (H,W,C) 로 엮는다.
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        for (let c = 0; c < 3; c++) {
+          pixels[(y * width + x) * 3 + c] = raw[1 + c * height * width + y * width + x] ?? 0;
+        }
+      }
+    }
+    const img = vision.image(pixels, height, width, 3, true);
+    const x = transformFor(manifest)(img);
+    const scores = await noGrad(() => loaded.model.forward(x)).toArray();
+    const read = readOutput(manifest, [...scores]);
+    const want = manifest.outputs?.classes?.[truth] ?? String(truth);
+    add("진짜 이미지 한 장에서 이름이 나온다", read.label !== null,
+      read.label === null
+        ? "이름이 안 나왔다 — 매니페스트가 classes 를 안 적었다"
+        : `${read.label} (정답 ${want})`);
+  }
+
   // 최대 절대차가 0 으로 나오는 것은 같은 어댑터에서 같은 가중치를 다시 돌렸으니
   // 맞다. 그런데 그 0 만 보고는 **대조가 무엇이든 통과시키는 것**과 구별이 안 된다.
   // 그래서 배운 적 없는 모델을 같은 샘플에 대 본다 — 여기서 통과하면 배지는 거짓이다.
   const stranger = await verify(
-    createModel(manifest.arch.factory, manifest.arch.args), manifest, manifestUrl);
+    createModelFor(manifest.arch), manifest, manifestUrl);
   add("배운 적 없는 모델은 통과 못 한다", !stranger.ok,
     stranger.ok
       ? "통과했다 — 이 대조는 아무것도 안 가려낸다"

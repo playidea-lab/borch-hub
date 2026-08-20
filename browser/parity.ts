@@ -49,7 +49,7 @@ export interface ParityReport {
 export async function report(): Promise<ParityReport> {
   await init();
 
-  const mine = entries(createModel("resnet18", { numClasses: NUM_CLASSES }).stateDict());
+  const mine = entries(createModel("borchvision", "resnet18_cifar", { numClasses: NUM_CLASSES }).stateDict());
   const theirs = entries(new CoreResNet18(NUM_CLASSES).stateDict());
 
   const mineKeys = new Set(mine.map((e) => e.key));
@@ -75,7 +75,7 @@ export async function report(): Promise<ParityReport> {
 
   const ok = lines.length === 0;
   const head = ok
-    ? `카탈로그 resnet18 == 코어 벤치 ResNet18 · 텐서 ${mine.length}개, 열쇠와 모양이 모두 같다`
+    ? `카탈로그 borchvision/resnet18_cifar == 코어 벤치 ResNet18 · 텐서 ${mine.length}개, 열쇠와 모양이 모두 같다`
     : `**갈렸다** — 카탈로그 ${mine.length}개 · 코어 ${theirs.length}개`;
 
   return {

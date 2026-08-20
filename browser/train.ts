@@ -168,7 +168,7 @@ export async function run(
 ): Promise<Cargo> {
   await init();
 
-  const model = createModel("resnet18", { numClasses: NUM_CLASSES });
+  const model = createModel("borchvision", "resnet18_cifar", { numClasses: NUM_CLASSES });
   const sgd = new optim.SGD(model.parameters(), opts.lr, opts.momentum, opts.weightDecay);
   const criterion = new nn.CrossEntropyLoss();
   const usable = train.n - (train.n % opts.batch);

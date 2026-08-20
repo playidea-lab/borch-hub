@@ -18,7 +18,7 @@ import { nn } from "borch";
 
 import { sha256Hex } from "./hash.js";
 import { BorchHubError, parseManifest, type Manifest } from "./manifest.js";
-import { createModel } from "./models/registry.js";
+import { createModelFor } from "./models/registry.js";
 
 /** 받은 것을 다시 안 받으려고 쓰는 통. 판을 이름에 박아 규칙이 바뀌면 갈린다. */
 const CACHE_NAME = "borch-hub-v1";
@@ -159,7 +159,7 @@ export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise
   }
 
   const bytes = await fetchWeights(manifest, manifestUrl, opts);
-  const model = createModel(manifest.arch.factory, manifest.arch.args);
+  const model = createModelFor(manifest.arch);
   model.loadStateDict(loadBundle(bytes).tensors);
   return { manifest, model, environment };
 }
