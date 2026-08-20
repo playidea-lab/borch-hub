@@ -15,6 +15,7 @@
     "browser",
     "src/index.ts",
     "src/load.ts",
+    "src/preprocess.ts",
     "src/verify.ts",
     "src/models/registry.ts",
     "src/models/resnet.ts"
