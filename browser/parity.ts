@@ -20,7 +20,7 @@
 import { Device, init, type Tensor } from "borch";
 import { ResNet18 as CoreResNet18 } from "@core/bench";
 
-import { createModel } from "../src/models/registry.js";
+import { createModel } from "bimm";
 
 const NUM_CLASSES = 10;
 

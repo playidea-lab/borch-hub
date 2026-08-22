@@ -20,6 +20,7 @@
     // 위해서만 있는 개발용 이름이다. 브라우저 쪽 임포트 맵이 같은 이름을 잇는다.
     "paths": {
       "borch": ["../borch/borch-ts/dist/src/index.d.ts"],
+      "bimm": ["../bimm/dist/src/index.d.ts"],
       "@core/bench": ["../borch/borch-ts/dist/test/bench.d.ts"],
       "@core/accuracy": ["../borch/borch-ts/dist/test/accuracy.d.ts"]
     },
