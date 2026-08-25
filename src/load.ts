@@ -58,6 +58,24 @@ export interface EnvironmentReport {
  * **환경**이고, 그건 브라우저가 답할 자리다.
  */
 export async function checkEnvironment(manifest: Manifest): Promise<EnvironmentReport> {
+  // **이 런타임을 지원한다고 적혀 있는지 먼저 본다.** `ts` 가 비어 있으면 그 모델은
+  // 파이썬 쪽만 두고 나간 것이다 — 가중치는 실리지만 이 라이브러리가 만들 층이 없다.
+  // 판정을 받기 전에 하는 이유가 여기서도 같다: 45MB 를 받고 나서 알 일이 아니다.
+  //
+  // 범위(`>=0.1.0`)는 **못 본다.** 코어가 자기 버전을 내놓지 않아서 비교할 수가 없다.
+  // 짐작해서 통과시키는 것보다 못 본다고 적어두는 편이 낫다 — 코어가 버전을 내놓는
+  // 날 이 자리에 비교가 들어간다.
+  if (manifest.runtime.ts === null) {
+    return {
+      ok: false,
+      adapter: "(안 봄)",
+      reasons: [
+        `${manifest.name} 은 이 런타임(borch-ts)을 지원한다고 적혀 있지 않습니다`
+        + (manifest.runtime.py !== null ? " — 파이썬 쪽만 있습니다" : ""),
+      ],
+    };
+  }
+
   const need = manifest.runtime.webgpu;
   if (need === null || !need.required) {
     return { ok: true, reasons: [], adapter: "(WebGPU 를 요구하지 않음)" };
@@ -100,25 +118,37 @@ export async function fetchWeights(
   manifest: Manifest, manifestUrl: string, opts: LoadOptions = {},
 ): Promise<Uint8Array> {
   const url = resolve(manifestUrl, manifest.weights.url);
-  const get = opts.fetch ?? fetch;
   const useCache = (opts.cache ?? true) && typeof caches !== "undefined";
+  const box = useCache ? await caches.open(CACHE_NAME) : null;
 
   let bytes: Uint8Array | null = null;
-  const box = useCache ? await caches.open(CACHE_NAME) : null;
+  let fromCache = false;
   if (box) {
     const hit = await box.match(url);
-    if (hit) bytes = new Uint8Array(await hit.arrayBuffer());
+    if (hit) {
+      bytes = new Uint8Array(await hit.arrayBuffer());
+      fromCache = true;
+    }
+  }
+  if (bytes === null) bytes = await download(url, manifest.weights.bytes, opts);
+
+  try {
+    await measure(bytes, manifest);
+  } catch (err) {
+    // **틀린 것이 통에 들어 있었으면 빼낸다.** 안 그러면 그 통이 같은 실패를 영원히
+    // 내놓고, 받는 쪽에는 통을 비울 방법이 없다 — 재는 것만으로는 부족하다.
+    if (fromCache && box) await box.delete(url);
+    throw err;
   }
 
-  if (bytes === null) {
-    const res = await get(url);
-    if (!res.ok) throw new BorchHubError(`가중치를 받지 못했습니다: ${res.status} ${url}`);
-    const buf = await res.arrayBuffer();
-    bytes = new Uint8Array(buf);
-    opts.onProgress?.(bytes.length, manifest.weights.bytes);
-    if (box) await box.put(url, new Response(buf));
-  }
+  // **검사를 지난 뒤에 넣는다.** 전에는 받자마자 넣었는데, 그러면 틀린 바이트가 먼저
+  // 통에 들어가고 검사는 그 다음에 실패했다.
+  if (box && !fromCache) await box.put(url, new Response(bytes as unknown as BodyInit));
+  return bytes;
+}
 
+/** 길이와 해시. 둘 다 **싣기 전에** 본다. */
+async function measure(bytes: Uint8Array, manifest: Manifest): Promise<void> {
   if (bytes.length !== manifest.weights.bytes) {
     throw new BorchHubError(
       `가중치 길이가 다릅니다: 매니페스트 ${manifest.weights.bytes} · 받은 것 ${bytes.length}`,
@@ -131,7 +161,52 @@ export async function fetchWeights(
       + `  매니페스트 ${manifest.weights.sha256}\n  받은 것   ${got}`,
     );
   }
-  return bytes;
+}
+
+/**
+ * 바이트를 받는다. **읽는 대로 진행률을 알린다.**
+ *
+ * 전에는 `arrayBuffer()` 로 통째로 받은 뒤에 콜백을 한 번 불렀다. 45MB 동안 0 이다가
+ * 끝나는 순간 100 이 되는 진행률은 진행률이 아니다 — 받는 쪽은 그 사이를 멈춘 것과
+ * 구별하지 못한다.
+ *
+ * 몸통을 스트림으로 못 주는 자리(일부 폴리필·가짜 fetch)도 있어서, 없으면 통째로
+ * 받는 옛 길로 돌아간다.
+ */
+async function download(
+  url: string, expected: number, opts: LoadOptions,
+): Promise<Uint8Array> {
+  const get = opts.fetch ?? fetch;
+  const res = await get(url);
+  if (!res.ok) throw new BorchHubError(`가중치를 받지 못했습니다: ${res.status} ${url}`);
+
+  const body = res.body;
+  if (body === null || opts.onProgress === undefined) {
+    const whole = new Uint8Array(await res.arrayBuffer());
+    opts.onProgress?.(whole.length, expected);
+    return whole;
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    // 매니페스트가 말한 수를 그대로 넘긴다. 서버의 content-length 를 쓰면 그것이
+    // 거짓일 때 진행률이 100 을 넘거나 못 미치는데, **매니페스트는 이미 검사 대상**이다.
+    opts.onProgress(received, expected);
+  }
+
+  const all = new Uint8Array(received);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.length;
+  }
+  return all;
 }
 
 export interface Loaded {

@@ -184,3 +184,79 @@ test("WebGPU 가 필요한데 없는 환경이면 이유를 들고 거절한다"
     `이유가 WebGPU 를 짚어야 합니다 — ${report.reasons.join(" / ")}`,
   );
 });
+
+test("이 런타임을 지원한다고 안 적힌 모델은 받기 전에 거절한다", async () => {
+  // `ts` 가 비어 있으면 파이썬 쪽만 두고 나간 모델이다. 가중치는 실리지만 이 라이브러리가
+  // 만들 층이 없다 — 그것을 45MB 받은 뒤에 알 일이 아니다.
+  const manifest = parseManifest(broken((d) => {
+    const rt = d["runtime"] as Record<string, unknown>;
+    rt["ts"] = null;
+    rt["py"] = ">=0.1.0";
+  }));
+  const report = await checkEnvironment(manifest);
+  assert.equal(report.ok, false);
+  assert.ok(
+    report.reasons.some((r) => r.includes("borch-ts")),
+    `이유가 런타임을 짚어야 합니다 — ${report.reasons.join(" / ")}`,
+  );
+  assert.ok(report.reasons.some((r) => r.includes("파이썬")));
+});
+
+test("진행률이 받는 도중에 여러 번 울린다 — 100%에서 한 번이 아니다", async () => {
+  const { bytes, doc } = cargo();
+  const manifest = parseManifest(doc);
+
+  // 64 바이트씩 흘려보내는 몸통. 진짜 서버가 하는 일과 같은 모양이다.
+  const streaming = (async (): Promise<Response> => new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller): void {
+        for (let at = 0; at < bytes.length; at += 64) {
+          controller.enqueue(bytes.slice(at, at + 64));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  )) as unknown as typeof fetch;
+
+  const seen: number[] = [];
+  const got = await fetchWeights(manifest, MANIFEST_URL, {
+    fetch: streaming,
+    cache: false,
+    onProgress: (received) => { seen.push(received); },
+  });
+
+  assert.deepEqual([...got], [...bytes]);
+  assert.ok(seen.length > 1, `여러 번 울려야 합니다 — ${seen.length} 번`);
+  // 늘어나기만 하고, 마지막이 전체다.
+  for (let i = 1; i < seen.length; i++) {
+    assert.ok((seen[i] ?? 0) > (seen[i - 1] ?? 0), `진행률이 뒤로 가면 안 됩니다: ${seen.join(",")}`);
+  }
+  assert.equal(seen.at(-1), bytes.length);
+});
+
+test("몸통을 스트림으로 못 주면 통째로 받는 길로 돌아간다", async () => {
+  const { bytes, doc } = cargo();
+  const manifest = parseManifest(doc);
+
+  // `body` 가 없는 응답. 일부 폴리필과 옛 fetch 구현이 이 모양이고, 그때 스트림을
+  // 읽으려 들면 받는 쪽은 진행률이 아니라 예외를 만난다.
+  //
+  // **`new Response(바이트)` 로는 이 자리를 못 만든다** — 노드는 거기에도 몸통을
+  // 붙여 주기 때문에, 그렇게 쓴 검사는 통과하지만 확인하려던 길을 안 밟는다.
+  const bodyless = (async (): Promise<Response> => ({
+    ok: true,
+    status: 200,
+    body: null,
+    arrayBuffer: async (): Promise<ArrayBuffer> => bytes.slice().buffer,
+  } as unknown as Response)) as unknown as typeof fetch;
+
+  const seen: number[] = [];
+  const got = await fetchWeights(manifest, MANIFEST_URL, {
+    fetch: bodyless,
+    cache: false,
+    onProgress: (received) => { seen.push(received); },
+  });
+  assert.deepEqual([...got], [...bytes]);
+  assert.deepEqual(seen, [bytes.length], "옛 길에서는 끝에 한 번만 운다");
+});
