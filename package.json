@@ -23,11 +23,12 @@
     "borch-ts": "^0.1.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build",
-    "test": "tsc -p tsconfig.json && node --test dist/test/*.js",
-    "build:browser": "tsc -p tsconfig.browser.json",
+    "test": "npm run clean && tsc -p tsconfig.json && node --test dist/test/*.js",
+    "build:browser": "npm run clean && tsc -p tsconfig.browser.json",
     "check:browser": "tsc -p tsconfig.browser.json --noEmit",
     "parity": "uv run --with playwright python browser/parity.py",
     "train": "uv run --with playwright python browser/train.py",
