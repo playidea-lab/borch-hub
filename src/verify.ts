@@ -15,7 +15,7 @@
  * 작은 수치 차이뿐이고, 그건 `rtol`·`atol` 이 다룰 일이다.
  */
 
-import { load as loadBundle, noGrad, nn, Tensor } from "borch";
+import { decode, noGrad, nn, Tensor } from "borch";
 
 import { BorchHubError, type Manifest } from "./manifest.js";
 import { resolve, type LoadOptions } from "./load.js";
@@ -36,7 +36,9 @@ async function grabTensor(
   const get = opts.fetch ?? fetch;
   const res = await get(url);
   if (!res.ok) throw new BorchHubError(`${what} 을 받지 못했습니다: ${res.status} ${url}`);
-  const bundle = loadBundle(new Uint8Array(await res.arrayBuffer()));
+  // 샘플 파일은 평평한 텐서 표다. 코어의 `load` 는 트리를 담은 `Savable` 을 주므로
+  // 여기서는 평평한 표를 그대로 돌려주는 `decode` 를 쓴다.
+  const bundle = decode(new Uint8Array(await res.arrayBuffer()));
   const first = Object.values(bundle.tensors)[0];
   if (first === undefined) throw new BorchHubError(`${what} 에 텐서가 없습니다: ${url}`);
   return first;
