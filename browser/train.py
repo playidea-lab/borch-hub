@@ -1,6 +1,6 @@
 """첫 화물을 만든다 — 브라우저에서 학습해 safetensors 세 개를 받아온다.
 
-    npm run build                      # 여기
+    npm run build:browser               # 여기
     (cd ../borch && npm run build:ts)  # 코어
 
     uv run --with playwright python browser/train.py --headed --epochs 2
@@ -68,7 +68,7 @@ def main(argv: list[str]) -> int:
 
     built = HUB / "dist" / "browser" / "train.js"
     if not built.exists():
-        print(f"방출물이 없다: {built}\n  먼저: npm run build", file=sys.stderr)
+        print(f"방출물이 없다: {built}\n  먼저: npm run build:browser", file=sys.stderr)
         return 2
 
     def opt(flag: str, default: str) -> str:

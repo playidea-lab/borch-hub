@@ -11,7 +11,7 @@
 매니페스트 주소 하나로 돌 준비가 된 모델까지 간다.
 
 ```ts
-import { init } from "borch";
+import { init } from "borch-ts";
 import { load, verify } from "borch-hub";
 
 await init();
@@ -99,17 +99,28 @@ GPU 장치를 공유하지 않아서 **예외 없이 조용히 안 맞는다.** 
 
 ## 돌리기
 
-카탈로그는 코어의 `nn` 층 위에 서므로 **코어를 옆에 나란히 받아 한 번 빌드해야**
-타입 검사가 된다. `borch` 가 npm 에 나가면 이 단계는 사라진다.
+```bash
+npm install
+npm test              # 배포되는 코드 전부
+npm run check         # 타입만
+```
+
+코어와 카탈로그는 npm 에서 온다 — `borch-ts`·`bimm-ts`. 접미사가 붙은 것은 갈려서가
+아니라 **레지스트리의 유사성 필터가 `borch` 도 `bimm` 도 막기 때문**이다(둘 다 403 을
+받고 알았다). 저장소 이름은 접미사 없는 쪽 그대로다.
+
+### 브라우저 하네스는 옆의 코어가 필요하다
+
+`parity` 와 `train` 은 코어의 **벤치 모듈**을 쓰는데, 공개 진입점이 아니라 npm 배포에
+안 실린다. 그래서 이 둘만 옆에 받아둔 코어를 본다 — 그리고 코어를 두 벌 싣지 않으려고
+이 하네스는 코어 전체를 옆의 것으로 잡는다.
 
 ```bash
 git clone git@github.com:playidea-lab/borch.git ../borch
 cd ../borch && npm ci && npm run build:ts && cd -
 
-npm install
-npm test              # 전부 — 카탈로그 포함
-npm run test:nocore   # 코어 없이 볼 수 있는 데까지 (CI 가 토큰 없을 때 쓰는 길)
-npm run check         # 타입만
+npm run build:browser   # 하네스 방출
+npm run check:browser   # 하네스 타입만
 ```
 
 ### 두 벌 대조

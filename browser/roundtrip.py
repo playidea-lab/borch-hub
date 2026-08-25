@@ -51,7 +51,7 @@ def main(argv: list[str]) -> int:
         print(f"화물이 없다: {summary_path}\n  먼저: npm run train", file=sys.stderr)
         return 2
     if not (HUB / "dist" / "browser" / "roundtrip.js").exists():
-        print("방출물이 없다 — 먼저: npm run build", file=sys.stderr)
+        print("방출물이 없다 — 먼저: npm run build:browser", file=sys.stderr)
         return 2
 
     port, stop = serve()

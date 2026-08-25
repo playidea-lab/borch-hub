@@ -1,0 +1,27 @@
+{
+  // 브라우저 하네스. **옆에 나란히 받아둔 코어가 있어야 돌고, 그것이 의도다.**
+  //
+  // ## 왜 배포되는 코드와 갈라놓았나
+  //
+  // `parity.ts` 와 `train.ts` 는 코어의 **벤치 모듈**(`@core/bench`·`@core/accuracy`)을
+  // 쓴다. 공개된 진입점이 아니라서 npm 배포에 실리지 않고, 그 파일들은 코어를 상대
+  // 경로(`../src/...`)로 끌어온다 — 즉 **옆의 코어를 싣는다.**
+  //
+  // 그래서 이 프로그램에서 `borch-ts` 를 설치된 것으로 두면 코어가 **두 벌**이 된다.
+  // 텐서 두 벌은 같은 GPU 장치를 공유하지 않아 조용히 안 맞는다. 페이지의 임포트 맵도
+  // 같은 이유로 이 둘을 옆의 코어로 잇는다.
+  //
+  // 배포되는 `src/` 는 반대다 — 설치된 것에서 온다. 그쪽이 사용자가 겪는 배치이고,
+  // 그래서 CI 가 토큰 없이 보는 것도 그쪽이다.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "borch-ts": ["../borch/borch-ts/dist/src/index.d.ts"],
+      "@core/bench": ["../borch/borch-ts/dist/test/bench.d.ts"],
+      "@core/accuracy": ["../borch/borch-ts/dist/test/accuracy.d.ts"]
+    }
+  },
+  // `src` 가 같이 있는 것은 `roundtrip.ts` 가 그것을 부르기 때문이다.
+  "include": ["src/**/*.ts", "browser/**/*.ts"]
+}
