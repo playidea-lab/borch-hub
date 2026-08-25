@@ -147,7 +147,7 @@ export interface Loaded {
  * 멈추고, 그 문구를 우리 말로 바꾸지 않는다.
  */
 export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise<Loaded> {
-  const { load: loadBundle } = await import("borch");
+  const { decode } = await import("borch");
   const manifest = await fetchManifest(manifestUrl, opts);
 
   const environment = await checkEnvironment(manifest);
@@ -160,6 +160,9 @@ export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise
 
   const bytes = await fetchWeights(manifest, manifestUrl, opts);
   const model = createModelFor(manifest.arch);
-  model.loadStateDict(loadBundle(bytes).tensors);
+  // `load` 가 아니라 `decode` 다. 코어의 `load` 는 저장할 때의 트리를 그대로 돌려주므로
+  // 반환형이 `Savable` 이고, 평평한 표를 꺼내려면 부르는 자리마다 좁혀야 한다. 가중치
+  // 파일은 언제나 평평한 상태사전이다 — 남이 만든 safetensors 도 그렇다.
+  model.loadStateDict(decode(bytes).tensors);
   return { manifest, model, environment };
 }
