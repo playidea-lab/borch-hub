@@ -72,7 +72,13 @@ export interface Preprocess {
   readonly valueRange: "unit";
   readonly mean: readonly number[];
   readonly std: readonly number[];
-  /** **적을 수는 있고 아직 아무 런타임도 못 한다.** borch 에 Resize 가 없다. */
+  /**
+   * 짧은 변을 이 길이로 맞춘다. 코어에 `vision.Resize` 가 생기면서 **적을 수만 있던
+   * 필드가 실제로 수행된다** — 이 줄은 그 전 사정을 그대로 들고 있었다.
+   *
+   * 지금 레지스트리의 모델은 32×32 로 이미 맞아 들어와서 둘 다 `null` 이다. 값이
+   * 든 채로 지나가는 길은 `test/resized.test.ts` 가 대신 밟아 둔다.
+   */
   readonly resize: { readonly shortSide: number; readonly interpolation: "nearest" | "bilinear" } | null;
   readonly centerCrop: readonly [number, number] | null;
 }
