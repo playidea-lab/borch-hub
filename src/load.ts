@@ -14,7 +14,7 @@
  * 없어도 시그니처에 자리를 비워 둔다 — 나중에 넣으면 이미 쓰고 있는 쪽이 깨진다.
  */
 
-import { nn } from "borch";
+import { nn } from "borch-ts";
 
 import { sha256Hex } from "./hash.js";
 import { BorchHubError, parseManifest, type Manifest } from "./manifest.js";
@@ -147,7 +147,7 @@ export interface Loaded {
  * 멈추고, 그 문구를 우리 말로 바꾸지 않는다.
  */
 export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise<Loaded> {
-  const { decode } = await import("borch");
+  const { decode } = await import("borch-ts");
   const manifest = await fetchManifest(manifestUrl, opts);
 
   const environment = await checkEnvironment(manifest);

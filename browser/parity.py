@@ -24,7 +24,7 @@ def main(argv: list[str]) -> int:
 
     built = HUB / "dist" / "browser" / "parity.js"
     if not built.exists():
-        print(f"방출물이 없다: {built}\n  먼저: npm run build", file=sys.stderr)
+        print(f"방출물이 없다: {built}\n  먼저: npm run build:browser", file=sys.stderr)
         return 2
     core_dist = HUB.parent / "borch" / "borch-ts" / "dist" / "test" / "bench.js"
     if not core_dist.exists():

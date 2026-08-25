@@ -21,10 +21,10 @@
 
 import {
   Device, init, noGrad, save, Tensor, device, vision, nn, optim,
-} from "borch";
+} from "borch-ts";
 import { decodeCifar, type Split } from "@core/accuracy";
 
-import { createModel } from "bimm";
+import { createModel } from "bimm-ts";
 
 /** CIFAR-10 의 통상값. 정규화를 빼면 첫 에폭이 눈에 띄게 느리게 붙는다. */
 const CIFAR_MEAN = [0.4914, 0.4822, 0.4465];

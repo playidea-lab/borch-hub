@@ -17,10 +17,10 @@
  * 체크포인트만 조용히 안 실리는 종류다.
  */
 
-import { Device, init, type Tensor } from "borch";
+import { Device, init, type Tensor } from "borch-ts";
 import { ResNet18 as CoreResNet18 } from "@core/bench";
 
-import { createModel } from "bimm";
+import { createModel } from "bimm-ts";
 
 const NUM_CLASSES = 10;
 

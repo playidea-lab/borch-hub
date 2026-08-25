@@ -7,8 +7,8 @@
  * 알고, 카탈로그는 허브를 모른다.
  */
 
-import { createModel, listModels, type FactoryName } from "bimm";
-import type { nn } from "borch";
+import { createModel, listModels, type FactoryName } from "bimm-ts";
+import type { nn } from "borch-ts";
 
 import { BorchHubError, type Arch } from "./manifest.js";
 

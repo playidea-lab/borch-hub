@@ -15,7 +15,7 @@
  * 작은 수치 차이뿐이고, 그건 `rtol`·`atol` 이 다룰 일이다.
  */
 
-import { decode, noGrad, nn, Tensor } from "borch";
+import { decode, noGrad, nn, Tensor } from "borch-ts";
 
 import { BorchHubError, type Manifest } from "./manifest.js";
 import { resolve, type LoadOptions } from "./load.js";

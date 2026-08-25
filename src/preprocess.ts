@@ -16,7 +16,7 @@
  * 그쪽도 의존해야 하고, 그러면 유통이 카탈로그마다 하나씩 늘어난다.
  */
 
-import { Tensor, vision } from "borch";
+import { Tensor, vision } from "borch-ts";
 
 import { BorchHubError, type Manifest, type Preprocess } from "./manifest.js";
 

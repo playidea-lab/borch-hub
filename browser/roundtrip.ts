@@ -9,12 +9,12 @@
  * 의미를 갖는다 — 언제나 통과하는 검사는 검사가 아니다.
  */
 
-import { init } from "borch";
+import { init } from "borch-ts";
 
 import {
   createModelFor, load, fetchManifest, readOutput, transformFor, BorchHubError,
 } from "../src/index.js";
-import { noGrad, vision } from "borch";
+import { noGrad, vision } from "borch-ts";
 import { verify } from "../src/verify.js";
 
 export interface Check {
