@@ -20,7 +20,7 @@
   ],
   "peerDependencies": {
     "bimm-ts": ">=0.2.0 <1.0.0",
-    "borch-ts": ">=0.1.0 <1.0.0"
+    "borch-ts": ">=0.2.0 <1.0.0"
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -68,7 +68,7 @@
     "@types/node": "^22.0.0",
     "@webgpu/types": "^0.1.71",
     "bimm-ts": ">=0.2.0 <1.0.0",
-    "borch-ts": ">=0.1.1 <1.0.0",
+    "borch-ts": ">=0.2.0 <1.0.0",
     "typescript": "^5.9.0"
   }
 }

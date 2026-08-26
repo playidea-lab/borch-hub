@@ -79,7 +79,10 @@ export interface Preprocess {
    * 지금 레지스트리의 모델은 32×32 로 이미 맞아 들어와서 둘 다 `null` 이다. 값이
    * 든 채로 지나가는 길은 `test/resized.test.ts` 가 대신 밟아 둔다.
    */
-  readonly resize: { readonly shortSide: number; readonly interpolation: "nearest" | "bilinear" } | null;
+  readonly resize:
+    | { readonly shortSide: number;
+        readonly interpolation: "nearest" | "bilinear" | "bicubic" }
+    | null;
   readonly centerCrop: readonly [number, number] | null;
 }
 
@@ -289,7 +292,10 @@ export function parseManifest(raw: unknown): Manifest {
     let resize: Preprocess["resize"] = null;
     if (isRecord(resizeRaw)) {
       const interp = str(resizeRaw, "interpolation", ".preprocess.resize");
-      if (interp !== "nearest" && interp !== "bilinear") {
+      // `bicubic` 은 코어 0.2.0 부터 있다. timm 의 ImageNet 설정이 쓰는 보간이고,
+      // 그것이 없던 동안 timm 화물은 전처리 한 항목을 두고 와야 했다 — bilinear 로
+      // 바꿔 넣으면 top-1 이 68.5% 만 일치한다(실측).
+      if (interp !== "nearest" && interp !== "bilinear" && interp !== "bicubic") {
         fail(".preprocess.resize.interpolation", `모르는 값입니다 — '${interp}'`);
       }
       resize = { shortSide: num(resizeRaw, "shortSide", ".preprocess.resize"), interpolation: interp };
