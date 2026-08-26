@@ -37,6 +37,16 @@ export interface LoadOptions {
    * 그리고 받는 도중 조각과 조각 사이. 그래야 느린 것과 멈춘 것이 갈린다.
    */
   readonly timeoutMs?: number;
+  /**
+   * 받다 끊겼을 때 **이어받기를 몇 번까지 시도할지.** 기본 2.
+   *
+   * 45MB 를 90% 에서 놓치고 처음부터 받는 것은 사용자에게 실패와 같다. 이미 받은
+   * 바이트는 손에 있으므로, 끊긴 자리부터 `Range` 로 이어 붙인다.
+   *
+   * 이어 붙인 것이 옳은지는 **해시가 답한다** — 그 사이 서버의 파일이 바뀌었다면
+   * 이어 붙인 결과가 어긋나고, 그것은 싣기 전에 걸린다.
+   */
+  readonly resumes?: number;
 }
 
 /** 기본 정체 시간. 30 초 동안 한 바이트도 안 오면 그 연결은 멈춘 것이다. */
@@ -58,9 +68,13 @@ function stalled(what: string, ms: number): BorchHubError {
 /** 응답이 시작되기까지를 잰다. 몸통을 다 받는 시간은 여기서 안 센다. */
 export async function begin(
   get: typeof fetch, url: string, what: string, ms: number,
+  headers?: Record<string, string>,
 ): Promise<Response> {
   try {
-    return await get(url, { signal: AbortSignal.timeout(ms) });
+    return await get(url, {
+      signal: AbortSignal.timeout(ms),
+      ...(headers === undefined ? {} : { headers }),
+    });
   } catch (err) {
     // 가짜 fetch 는 두 번째 인자를 무시하기도 한다. 그때는 여기로 안 온다.
     if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
@@ -273,19 +287,80 @@ async function download(
   url: string, expected: number, opts: LoadOptions,
 ): Promise<Uint8Array> {
   const ms = opts.timeoutMs ?? STALL_MS;
-  const res = await begin(opts.fetch ?? fetch, url, "가중치", ms);
+  const allowed = opts.resumes ?? 2;
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let resumed = 0;
+
+  for (;;) {
+    try {
+      received = await pull(url, expected, received, chunks, opts, ms);
+      break;
+    } catch (err) {
+      // **던진 `pull` 은 돌려주는 값이 없다.** 그러니 받은 양은 반환값이 아니라 손에
+      // 남은 조각에서 센다 — 이것을 빠뜨리면 이어받기가 영영 안 걸린다(실측).
+      received = held(chunks);
+      // 한 바이트도 없으면 이어받을 것도 없다. 처음부터 다시 받는 것과 같으므로,
+      // 거절을 그대로 올려 받는 쪽이 판단하게 둔다.
+      if (received === 0 || resumed >= allowed) throw err;
+      resumed += 1;
+    }
+  }
+
+  const all = new Uint8Array(received);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.length;
+  }
+  return all;
+}
+
+/** 손에 든 바이트. 끊긴 뒤 어디서부터 이어받을지가 여기서 나온다. */
+function held(chunks: readonly Uint8Array[]): number {
+  let sum = 0;
+  for (const chunk of chunks) sum += chunk.length;
+  return sum;
+}
+
+/**
+ * 한 번의 연결로 **끊긴 자리부터** 받는다. 받은 조각은 `chunks` 에 이어 붙이고 총량을
+ * 돌려준다.
+ *
+ * ## 서버가 `Range` 를 무시할 수 있다
+ *
+ * 그때는 206 이 아니라 200 과 함께 **파일 전체**가 온다. 손에 든 것 뒤에 그것을 붙이면
+ * 앞부분이 두 번 들어간 바이트가 되고, 해시는 그것을 "변조" 라고 말하게 된다 — 사실은
+ * 우리가 잘못 이어 붙인 것인데. 그래서 200 을 보면 **들고 있던 것을 버리고 처음부터**
+ * 받는다.
+ */
+async function pull(
+  url: string, expected: number, from: number,
+  chunks: Uint8Array[], opts: LoadOptions, ms: number,
+): Promise<number> {
+  const res = await begin(
+    opts.fetch ?? fetch, url, "가중치", ms,
+    from > 0 ? { Range: `bytes=${from}-` } : undefined,
+  );
   if (!res.ok) throw new BorchHubError(`가중치를 받지 못했습니다: ${res.status} ${url}`);
+
+  let received = from;
+  if (from > 0 && res.status !== 206) {
+    // 이어받기를 청했는데 전체가 왔다. 붙이지 않고 다시 센다.
+    chunks.length = 0;
+    received = 0;
+  }
 
   const body = res.body;
   if (body === null || opts.onProgress === undefined) {
     const whole = new Uint8Array(await res.arrayBuffer());
-    tell(opts, whole.length, expected);
-    return whole;
+    chunks.push(whole);
+    received += whole.length;
+    tell(opts, received, expected);
+    return received;
   }
 
   const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
   for (;;) {
     // **조각과 조각 사이**를 잰다. 총 시간이 아니므로, 계속 오기만 하면 한 시간짜리
     // 내려받기도 안 끊긴다 — 끊기는 것은 오지 않을 때뿐이다.
@@ -297,14 +372,7 @@ async function download(
     // 거짓일 때 진행률이 100 을 넘거나 못 미치는데, **매니페스트는 이미 검사 대상**이다.
     tell(opts, received, expected);
   }
-
-  const all = new Uint8Array(received);
-  let at = 0;
-  for (const chunk of chunks) {
-    all.set(chunk, at);
-    at += chunk.length;
-  }
-  return all;
+  return received;
 }
 
 export interface Loaded {
