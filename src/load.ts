@@ -148,6 +148,23 @@ export async function checkEnvironment(manifest: Manifest): Promise<EnvironmentR
 }
 
 /**
+ * 진행률을 알린다 — **부르는 쪽 코드가 던져도 내려받기는 계속한다.**
+ *
+ * 이 훅은 화면을 갱신하라는 뜻이지 내려받기의 일부가 아니다. 진행 막대 하나가 던졌다고
+ * 45MB 를 버리면, 받는 쪽은 자기가 무엇을 깨뜨렸는지도 모른 채 "받다 실패" 만 본다.
+ *
+ * 삼키는 것이 이 저장소의 기본은 아니다. 여기서 삼키는 이유는 **이것이 알림이지
+ * 결과가 아니기 때문**이고, 그 판단을 여기 적어 둔다.
+ */
+function tell(opts: LoadOptions, received: number, total: number): void {
+  try {
+    opts.onProgress?.(received, total);
+  } catch {
+    // 알림이 실패한 것과 내려받기가 실패한 것은 다른 일이다.
+  }
+}
+
+/**
  * 가중치 바이트. **해시가 안 맞으면 던진다.**
  *
  * 캐시에 든 것도 해시를 다시 잰다. 통에 들어간 뒤에 바뀔 일이 없다고 믿는 것과
@@ -167,6 +184,9 @@ export async function fetchWeights(
     if (hit) {
       bytes = new Uint8Array(await hit.arrayBuffer());
       fromCache = true;
+      // **통에서 꺼낸 것도 알린다.** 안 알리면 받는 쪽의 진행 막대가 0 에 멈춘 채로
+      // 모델이 튀어나온다 — 캐시가 있는 사람에게만 화면이 고장 난 것처럼 보인다.
+      tell(opts, bytes.length, manifest.weights.bytes);
     }
   }
   if (bytes === null) bytes = await download(url, manifest.weights.bytes, opts);
@@ -259,7 +279,7 @@ async function download(
   const body = res.body;
   if (body === null || opts.onProgress === undefined) {
     const whole = new Uint8Array(await res.arrayBuffer());
-    opts.onProgress?.(whole.length, expected);
+    tell(opts, whole.length, expected);
     return whole;
   }
 
@@ -275,7 +295,7 @@ async function download(
     received += value.length;
     // 매니페스트가 말한 수를 그대로 넘긴다. 서버의 content-length 를 쓰면 그것이
     // 거짓일 때 진행률이 100 을 넘거나 못 미치는데, **매니페스트는 이미 검사 대상**이다.
-    opts.onProgress(received, expected);
+    tell(opts, received, expected);
   }
 
   const all = new Uint8Array(received);
