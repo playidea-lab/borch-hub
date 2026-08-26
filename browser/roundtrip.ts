@@ -17,6 +17,14 @@ import {
 import { noGrad, vision } from "borch-ts";
 import { verify } from "../src/verify.js";
 
+/**
+ * 아래에서 읽는 이미지가 **어느 데이터셋의 것인가.**
+ *
+ * 라벨을 매니페스트의 클래스 목록으로 읽어도 되는지가 여기 걸린다. 이미지를 바꾸면
+ * 이 값도 같이 바꿔야 하고, 갈리면 정답 대조가 남의 목록을 읽는다.
+ */
+const IMAGE_DATASET = "cifar-10";
+
 export interface Check {
   readonly name: string;
   readonly ok: boolean;
@@ -69,6 +77,8 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
   if (manifest.preprocess !== null) {
     const [, height, width] = manifest.preprocess.inputSize;
     // CIFAR 시험 덩이의 첫 장. 라벨은 바이트 하나로 앞에 붙어 있다.
+    // 이미지를 바꾸면 `IMAGE_DATASET` 도 같이 바꿔야 한다 — 그 둘이 갈리면 정답
+    // 대조가 남의 목록을 읽는다.
     const raw = new Uint8Array(await (await fetch("/borch/cifar-batch-test.bin")).arrayBuffer());
     const truth = raw[0] ?? 0;
     const pixels = new Float64Array(height * width * 3);
@@ -110,10 +120,26 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
       resized === `1x${manifest.preprocess.inputSize.join("x")}`,
       resized ?? "(없음)");
 
+    // **이 이미지는 CIFAR 이다.** 라벨도 CIFAR 의 0–9 이므로, 그것을 매니페스트의
+    // 클래스 목록으로 읽어도 되는 것은 그 목록이 CIFAR 의 것일 때뿐이다. ImageNet
+    // 화물에서는 라벨 3(cat)이 "tiger shark" 로 읽히고, 32×32 를 224 로 늘린 그림이
+    // 들어가므로 **무엇이 나오든 판정이 아니다**(실측).
+    //
+    // 그래서 둘로 가른다. 이름이 나오는지는 언제나 보고, 그 이름이 맞는지는 이
+    // 이미지의 데이터셋일 때만 본다 — 아닐 때는 **안 봤다고 말한다.** 전에는 이
+    // 검사가 `label !== null` 만 보았으므로, 틀린 이름을 괄호에 담은 채 초록색이었다.
+    const ours = manifest.dataset === IMAGE_DATASET;
     add("진짜 이미지 한 장에서 이름이 나온다", read.label !== null,
       read.label === null
         ? "이름이 안 나왔다 — 매니페스트가 classes 를 안 적었다"
-        : `${read.label} (정답 ${want})`);
+        : ours
+          ? `${read.label} (정답 ${want})`
+          : `${read.label} — 이 화물은 ${manifest.dataset ?? "다른"} 것이라 맞는지는 안 본다`);
+
+    if (ours) {
+      add("그 이름이 정답이다", read.label === want,
+        read.label === want ? `${read.label}` : `${read.label} 인데 정답은 ${want}`);
+    }
   }
 
   // 최대 절대차가 0 으로 나오는 것은 같은 어댑터에서 같은 가중치를 다시 돌렸으니
