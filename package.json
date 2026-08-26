@@ -3,6 +3,14 @@
   "version": "0.2.2",
   "description": "borch 런타임이 바로 불러 돌릴 수 있는 모델의 배포·검증 클라이언트",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/playidea-lab/borch-hub.git"
+  },
+  "homepage": "https://playidea-lab.github.io/borch/",
+  "bugs": {
+    "url": "https://github.com/playidea-lab/borch-hub/issues"
+  },
   "type": "module",
   "exports": {
     ".": {
