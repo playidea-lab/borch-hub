@@ -41,11 +41,32 @@ function cargo(): { bytes: Uint8Array; doc: Record<string, unknown> } {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * **이벤트 루프를 붙잡아 두는 손잡이.**
+ *
+ * 진짜 내려받기는 소켓이 열려 있어서 노드가 "할 일이 남았다" 고 안다. 가짜 서버에는
+ * 그것이 없어서, 기다리는 것이 우리 약속 하나뿐이면 루프가 비어 버리고 노드는
+ * **아직 안 끝난 약속을 끝난 것으로 친다**(`Promise resolution is still pending but the
+ * event loop has already resolved`).
+ *
+ * 게다가 `AbortSignal.timeout()` 의 시계는 루프를 안 붙잡는다(unref). 그래서 붙잡는
+ * 일은 여기서 한다 — 검사가 코드가 아니라 하네스 때문에 갈리면 안 된다.
+ */
+function holdLoop(): () => void {
+  const handle = setInterval(() => undefined, 1_000);
+  return () => clearInterval(handle);
+}
+
 /** 영원히 답하지 않는 서버. 부른 쪽이 준 signal 을 지킨다. */
 const silent = (async (_url: string, init?: RequestInit): Promise<Response> => {
-  await new Promise((_, reject) => {
-    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
-  });
+  const release = holdLoop();
+  try {
+    await new Promise((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    });
+  } finally {
+    release();
+  }
   throw new Error("여기 오면 안 된다");
 }) as unknown as typeof fetch;
 
@@ -61,7 +82,10 @@ function trickle(
           const size = Math.ceil(bytes.length / count);
           controller.enqueue(bytes.slice(i * size, (i + 1) * size));
         }
-        if (thenSilent) await new Promise(() => undefined);
+        // 조용해진다 — 다만 **끝은 있다.** 영원히 기다리면 그 약속은 풀리지 않고,
+        // 루프를 붙잡아 둔 시계도 영영 안 꺼져서 검사 프로세스가 안 끝난다.
+        // 제한(수십 ms)보다 한참 길기만 하면 재려는 것은 그대로 재어진다.
+        if (thenSilent) await sleep(2_000);
         controller.close();
       },
     }),
