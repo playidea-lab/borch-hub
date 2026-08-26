@@ -18,7 +18,7 @@
 import { decode, noGrad, nn, Tensor } from "borch-ts";
 
 import { BorchHubError, type Manifest } from "./manifest.js";
-import { resolve, type LoadOptions } from "./load.js";
+import { begin, resolve, STALL_MS, type LoadOptions } from "./load.js";
 
 export interface VerifyResult {
   readonly ok: boolean;
@@ -33,8 +33,9 @@ export interface VerifyResult {
 async function grabTensor(
   url: string, opts: LoadOptions, what: string,
 ): Promise<Tensor> {
-  const get = opts.fetch ?? fetch;
-  const res = await get(url);
+  // 샘플은 작지만 **멈추는 것은 크기와 무관하다.** 배지를 받으러 갔다가 돌아오지
+  // 않으면, 받는 쪽에는 모델이 틀린 것과 구별되지 않는다.
+  const res = await begin(opts.fetch ?? fetch, url, what, opts.timeoutMs ?? STALL_MS);
   if (!res.ok) throw new BorchHubError(`${what} 을 받지 못했습니다: ${res.status} ${url}`);
   // 샘플 파일은 평평한 텐서 표다. 코어의 `load` 는 트리를 담은 `Savable` 을 주므로
   // 여기서는 평평한 표를 그대로 돌려주는 `decode` 를 쓴다.
