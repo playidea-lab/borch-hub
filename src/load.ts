@@ -29,6 +29,45 @@ export interface LoadOptions {
   /** Cache API 로 재사용할지. 기본은 쓴다 — 45MB 를 새로고침마다 받을 이유가 없다. */
   readonly cache?: boolean;
   readonly onProgress?: (received: number, total: number) => void;
+  /**
+   * **정체로 보기까지의 시간(ms).** 전체 시간이 아니다.
+   *
+   * 45MB 에 총 시간 제한을 걸면 느린 연결을 끊게 된다 — 그리고 그 사람은 우리가
+   * 왜 끊었는지 모른다. 재는 것은 **아무것도 안 오는 시간**이다: 응답이 시작되기까지,
+   * 그리고 받는 도중 조각과 조각 사이. 그래야 느린 것과 멈춘 것이 갈린다.
+   */
+  readonly timeoutMs?: number;
+}
+
+/** 기본 정체 시간. 30 초 동안 한 바이트도 안 오면 그 연결은 멈춘 것이다. */
+export const STALL_MS = 30_000;
+
+/**
+ * 멈춘 연결을 **거절로 바꾼다.**
+ *
+ * 이것이 없으면 `load()` 는 끝나지도 거절하지도 않는다. 받는 쪽에는 그것이 가장 나쁜
+ * 결과다 — 예외는 다룰 수 있지만 영원히 안 끝나는 약속은 다룰 수가 없다.
+ */
+function stalled(what: string, ms: number): BorchHubError {
+  return new BorchHubError(
+    `${what} — ${ms / 1000}초 동안 아무것도 오지 않았습니다.\n`
+    + "  연결이 멈췄거나 서버가 답하지 않습니다. 느린 것이 아니라 **멎은 것**입니다.",
+  );
+}
+
+/** 응답이 시작되기까지를 잰다. 몸통을 다 받는 시간은 여기서 안 센다. */
+export async function begin(
+  get: typeof fetch, url: string, what: string, ms: number,
+): Promise<Response> {
+  try {
+    return await get(url, { signal: AbortSignal.timeout(ms) });
+  } catch (err) {
+    // 가짜 fetch 는 두 번째 인자를 무시하기도 한다. 그때는 여기로 안 온다.
+    if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw stalled(`${what} 을 받지 못했습니다`, ms);
+    }
+    throw err;
+  }
 }
 
 /** 매니페스트 안의 상대 주소는 **매니페스트 자신을 기준**으로 푼다. */
@@ -37,8 +76,8 @@ export function resolve(base: string, ref: string): string {
 }
 
 export async function fetchManifest(url: string, opts: LoadOptions = {}): Promise<Manifest> {
-  const get = opts.fetch ?? fetch;
-  const res = await get(url);
+  const ms = opts.timeoutMs ?? STALL_MS;
+  const res = await begin(opts.fetch ?? fetch, url, "매니페스트", ms);
   if (!res.ok) throw new BorchHubError(`매니페스트를 받지 못했습니다: ${res.status} ${url}`);
   return parseManifest(await res.json());
 }
@@ -164,6 +203,43 @@ async function measure(bytes: Uint8Array, manifest: Manifest): Promise<void> {
 }
 
 /**
+ * 다음 조각, 아니면 거절.
+ *
+ * `reader.read()` 는 연결이 멎어도 그냥 기다린다. 여기서 시계를 붙여 **기다림을
+ * 거절로 바꾼다**, 그리고 어디까지 받았는지를 함께 말한다 — 몇 바이트에서 멎었는지가
+ * 없으면 받는 쪽은 자기 연결이 문제인지 우리 서버가 문제인지 가릴 수 없다.
+ */
+async function nextChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  received: number, expected: number, ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clock = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // **거절이 먼저다.** `cancel()` 이 앞서면 기다리던 `read()` 가 `{done:true}` 로
+      // 풀리면서 경주에서 이기고, 그러면 멎은 내려받기가 **정상 종료로 읽힌다** —
+      // 받은 바이트가 우연히 다 차 있으면 그대로 통과한다(실측으로 걸렸다).
+      // 다 받았는데 안 끝나는 것과, 오다 만 것은 **받는 쪽이 할 일이 다르다.**
+      // 앞은 다시 부르면 되고, 뒤는 연결이나 서버를 봐야 한다. 한 문장으로 뭉뚱그리면
+      // "512/512 바이트인데 아무것도 오지 않았습니다" 같은 말이 된다.
+      reject(received >= expected
+        ? new BorchHubError(
+          `가중치를 다 받았는데 연결이 닫히지 않았습니다 (${received}/${expected} 바이트).\n`
+          + `  ${ms / 1000}초를 더 기다렸습니다. 다시 불러 보십시오.`,
+        )
+        : stalled(`가중치를 받다 멈췄습니다 (${received}/${expected} 바이트)`, ms));
+      // 그 다음에 소켓을 놓는다. 안 놓으면 거절한 뒤에도 연결이 남는다.
+      void reader.cancel().catch(() => undefined);
+    }, ms);
+  });
+  try {
+    return await Promise.race([reader.read(), clock]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 바이트를 받는다. **읽는 대로 진행률을 알린다.**
  *
  * 전에는 `arrayBuffer()` 로 통째로 받은 뒤에 콜백을 한 번 불렀다. 45MB 동안 0 이다가
@@ -176,8 +252,8 @@ async function measure(bytes: Uint8Array, manifest: Manifest): Promise<void> {
 async function download(
   url: string, expected: number, opts: LoadOptions,
 ): Promise<Uint8Array> {
-  const get = opts.fetch ?? fetch;
-  const res = await get(url);
+  const ms = opts.timeoutMs ?? STALL_MS;
+  const res = await begin(opts.fetch ?? fetch, url, "가중치", ms);
   if (!res.ok) throw new BorchHubError(`가중치를 받지 못했습니다: ${res.status} ${url}`);
 
   const body = res.body;
@@ -191,7 +267,9 @@ async function download(
   const chunks: Uint8Array[] = [];
   let received = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    // **조각과 조각 사이**를 잰다. 총 시간이 아니므로, 계속 오기만 하면 한 시간짜리
+    // 내려받기도 안 끊긴다 — 끊기는 것은 오지 않을 때뿐이다.
+    const { done, value } = await nextChunk(reader, received, expected, ms);
     if (done) break;
     chunks.push(value);
     received += value.length;
