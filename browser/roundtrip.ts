@@ -37,22 +37,43 @@ export interface RoundtripReport {
   readonly checks: readonly Check[];
 }
 
+/**
+ * **어디까지 갔는지 말한다.**
+ *
+ * 이 검사는 끝날 때까지 한 줄도 안 찍었다. 그래서 매달렸을 때 로그의 마지막 줄은
+ * 첫 줄이었고, "도는 중" 과 "멈춤" 이 화면에서 같은 모양이었다 — 실제로 매달린
+ * 자리를 찾는 데 여러 번을 버렸고, 그때마다 원인을 엉뚱한 곳에서 찾았다.
+ *
+ * `console.log` 는 여기서 로그가 아니라 **밖으로 나가는 유일한 통로다.** 이 코드는
+ * 페이지 안에서 돌고, 결과를 기다리는 쪽은 다른 프로세스다.
+ */
+/** 판정 줄의 표. 파이썬 쪽이 이 글자로 그 줄을 가려낸다. */
+export const VERDICT = "__roundtrip__ ";
+
+const step = (what: string): void => {
+  console.log(`  … ${what}`);
+};
+
 export async function report(manifestUrl: string): Promise<RoundtripReport> {
+  step("장치를 연다");
   await init();
   const checks: Check[] = [];
   const add = (name: string, ok: boolean, note: string): void => {
     checks.push({ name, ok, note });
   };
 
+  step("매니페스트를 읽는다");
   const manifest = await fetchManifest(manifestUrl);
   add("매니페스트를 읽는다", true,
     `${manifest.name} ${manifest.version} · ${manifest.weights.bytes.toLocaleString()} 바이트`);
 
+  step("가중치를 받아 싣는다");
   const loaded = await load(manifestUrl);
   add("환경을 받기 전에 본다", loaded.environment.ok, loaded.environment.adapter);
   add("해시가 맞으면 실린다", true,
     `텐서 ${Object.keys(loaded.model.stateDict()).length}개`);
 
+  step("샘플을 대 본다");
   const result = await verify(loaded.model, manifest, manifestUrl);
   add("샘플 출력이 재현된다", result.ok,
     result.ok
@@ -79,6 +100,7 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     // CIFAR 시험 덩이의 첫 장. 라벨은 바이트 하나로 앞에 붙어 있다.
     // 이미지를 바꾸면 `IMAGE_DATASET` 도 같이 바꿔야 한다 — 그 둘이 갈리면 정답
     // 대조가 남의 목록을 읽는다.
+    step("진짜 이미지 한 장을 넣어 본다");
     const raw = new Uint8Array(await (await fetch("/borch/cifar-batch-test.bin")).arrayBuffer());
     const truth = raw[0] ?? 0;
     const pixels = new Float64Array(height * width * 3);
@@ -145,6 +167,7 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
   // 최대 절대차가 0 으로 나오는 것은 같은 어댑터에서 같은 가중치를 다시 돌렸으니
   // 맞다. 그런데 그 0 만 보고는 **대조가 무엇이든 통과시키는 것**과 구별이 안 된다.
   // 그래서 배운 적 없는 모델을 같은 샘플에 대 본다 — 여기서 통과하면 배지는 거짓이다.
+  step("배운 적 없는 모델을 대 본다");
   const stranger = await verify(
     createModelFor(manifest.arch), manifest, manifestUrl);
   add("배운 적 없는 모델은 통과 못 한다", !stranger.ok,
@@ -156,6 +179,7 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
   const tampered = { ...manifest, weights: { ...manifest.weights, sha256: "0".repeat(64) } };
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(tampered)], { type: "application/json" }));
+  step("해시를 틀리게 해 거절을 본다");
   let refused = false;
   let how = "거절하지 않았다 — 이 로더는 바이트를 안 보고 있다";
   try {
@@ -173,5 +197,18 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     ok ? "왕복 전체가 돈다" : "**어딘가 끊겼다**",
     ...checks.map((c) => `  ${c.ok ? "○" : "×"} ${c.name} — ${c.note}`),
   ];
-  return { ok, text: lines.join("\n"), checks };
+  // **판정을 이 통로로 내보낸다. 이것이 정본이다.**
+  //
+  // 아래에서 `window.__borchHubRoundtrip` 에도 세우지만, 밖에서 그 값을 읽어 가는
+  // 손잡기는 **큰 화물에서 안 온다**(실측). 값은 제대로 서고 `typeof` 도 맞는데,
+  // 바로 뒤에 건 300ms 짜리 `setTimeout` 이 끝내 안 돈다 — 그 시점부터 페이지의
+  // 메인 스레드가 멎는다. playwright 의 기다림은 rAF 든 시계든 그 스레드에서
+  // 도므로 둘 다 굶고, 21MB 화물은 통과하고 31~49MB 만 10 분을 꽉 채웠다.
+  //
+  // 왜 멎는지는 아직 모른다. 아는 것은 **멎기 전에 이 줄이 나간다**는 것이고,
+  // 그래서 판정을 값이 아니라 줄로 건넨다. 모르는 것을 안다고 적지 않기 위해
+  // 여기 그대로 적어 둔다.
+  const text = lines.join("\n");
+  console.log(`${VERDICT}${JSON.stringify({ ok, text })}`);
+  return { ok, text, checks };
 }

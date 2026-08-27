@@ -22,11 +22,19 @@
 
 import json
 import sys
+import time
 
 from launch import browser as browser_of
 from serve import HUB, REGISTRY, serve
 
 TIMEOUT_MS = 600_000
+# 판정 줄이 왔는지 보는 간격.
+POLL_MS = 200
+# `browser/roundtrip.ts` 의 `VERDICT` 와 **같은 글자여야 한다.** 갈리면 판정이
+# 평범한 로그 줄로 흘러가고, 이 검사는 아무 말 없이 시간을 채운다.
+VERDICT = "__roundtrip__ "
+# 답이 섰는지 보는 간격. `raf` 가 아니라 시계여야 하는 까닭은 아래 기다리는 자리에.
+POLL_MS = 200
 
 
 def _registry_manifest(port: int, rel: str) -> str:
@@ -97,6 +105,7 @@ def main(argv: list[str]) -> int:
 
 def _run(port: int, manifest_url: str, argv: list[str]) -> int:
     """페이지를 띄워 왕복을 시키고 보고서를 찍는다."""
+    verdict: dict[str, object | None] = {"value": None}
     if True:
         from playwright.sync_api import sync_playwright
 
@@ -104,11 +113,39 @@ def _run(port: int, manifest_url: str, argv: list[str]) -> int:
             page = browser.new_page()
             page.set_default_timeout(0)
             page.on("pageerror", lambda e: print(f"  [브라우저 예외] {e}"))
-            page.on("console", lambda m: print(f"  {m.text}") if m.type == "error" else None)
+            # **진행을 흘려보낸다.** 전에는 `error` 만 찍었고, 그래서 화면은 끝날
+            # 때까지 비어 있었다 — "도는 중" 과 "멈춤" 이 구별되지 않는다. 이 검사가
+            # 실제로 매달렸을 때 로그의 마지막 줄은 첫 줄이었고, 어느 단계인지
+            # 알아내는 데만 여러 번을 버렸다.
+            # 판정 줄은 가려내 담고, 나머지는 그대로 흘려보낸다.
+            def heard(text: str) -> None:
+                if text.startswith(VERDICT):
+                    verdict["value"] = json.loads(text[len(VERDICT):])
+                    return
+                print(f"  {text}", flush=True)
+
+            page.on("console", lambda m: heard(m.text))
+            # 렌더러가 죽으면 위의 기다림은 이유 없이 시간을 채운다. 죽었다고 말한다.
+            page.on("crash", lambda _p: print("  [페이지가 죽었다]", flush=True))
             page.goto(f"http://127.0.0.1:{port}/borch-hub/browser/roundtrip.html"
                       f"?manifest={manifest_url}")
-            page.wait_for_function("window.__borchHubRoundtrip !== undefined", timeout=TIMEOUT_MS)
-            result = page.evaluate("window.__borchHubRoundtrip")
+            # **판정은 줄로 온다. 값으로 읽어 가지 않는다.**
+            #
+            # 전에는 `window.__borchHubRoundtrip` 이 설 때까지 기다렸다. 큰 화물에서
+            # 그 기다림은 **끝나지 않는다** — 값은 제대로 서고 `typeof` 도 맞는데,
+            # 그 직후에 건 300ms 짜리 `setTimeout` 이 끝내 안 돈다(실측). 페이지의
+            # 메인 스레드가 그 시점부터 멎고, playwright 의 기다림은 rAF 로 보든
+            # 시계로 보든 그 스레드에서 도므로 둘 다 굶는다. 21MB 화물은 통과하고
+            # 31~49MB 만 10 분을 꽉 채운 것이 그것이었다 — 크기의 임계값이 아니다.
+            #
+            # 왜 멎는지는 모른다. 아는 것은 **멎기 전에 판정 줄이 나간다**는 것이다.
+            deadline = time.monotonic() + TIMEOUT_MS / 1000
+            while verdict["value"] is None and time.monotonic() < deadline:
+                page.wait_for_timeout(POLL_MS)
+            if verdict["value"] is None:
+                print(f"판정이 {TIMEOUT_MS // 1000}초 안에 오지 않았다.", flush=True)
+                return 1
+            result = verdict["value"]
 
     print(result["text"])
     return 0 if result["ok"] else 1
