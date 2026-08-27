@@ -73,6 +73,17 @@ const DEFECTS = [
     expect: "green",
   },
   {
+    name: "schema-moves-and-the-mirror-does-not",
+    what: "정본이 값을 하나 늘렸는데 거울이 안 따라왔다",
+    file: "schema/manifest.schema.json",
+    // **갈림은 이 방향으로 온다.** 거울을 좁히는 쪽은 컴파일러가 먼저 막지만,
+    // 정본이 먼저 움직이는 쪽은 아무도 안 막았다 — 레지스트리는 통과시키고
+    // 클라이언트가 거절하는 매니페스트가 그렇게 생긴다.
+    find: '                "bicubic"\n              ]',
+    with: '                "bicubic",\n                "lanczos"\n              ]',
+    caughtBy: "스키마가 허용하는 값을 거울도 전부 받는다",
+  },
+  {
     name: "lockfile-narrower-than-package-json",
     what: "잠금 파일이 캐럿으로 좁아져 CI 가 옛 판만 본다",
     file: "package-lock.json",

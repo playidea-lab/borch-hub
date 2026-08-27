@@ -1,0 +1,430 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/playidea-lab/borch-hub-registry/main/schema/manifest.schema.json",
+  "title": "borch-hub 모델 매니페스트",
+  "description": "이 파일이 borch-hub 의 유일한 계약이다. 배포된 뒤에는 못 바꾼다 — 남의 페이지가 이미 그 필드를 읽고 있기 때문이다. 필드를 늘리는 것은 되지만 뜻을 바꾸거나 지우는 것은 schemaVersion 을 올려야 한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "name",
+    "version",
+    "arch",
+    "weights",
+    "runtime",
+    "sample",
+    "origin",
+    "license"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "이 매니페스트가 따르는 스펙 판. **읽는 쪽은 옛 판도 읽어야 한다** — 받는 쪽이 옛 매니페스트를 거절하면 그건 허브가 아니라 한 판짜리 형식이다. 판 1 은 전처리·후처리 정보가 없고 arch 에 이름공간이 없다."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "레지스트리 안에서 유일한 이름. 디렉터리 이름과 같아야 한다."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "모델 버전. borch 버전과 무관하게 따로 간다."
+    },
+    "description": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string",
+      "description": "무엇을 하는 모델인가. 발견 레이어가 이것으로 묶는다.",
+      "examples": [
+        "image-classification"
+      ]
+    },
+    "dataset": {
+      "type": "string",
+      "examples": [
+        "cifar-10"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "arch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factory"
+      ],
+      "description": "가중치만으로는 모델이 복원되지 않는다. borch-hub 의 카탈로그에 있는 팩토리 이름과 인자로 구조를 되살린다.",
+      "properties": {
+        "factory": {
+          "type": "string",
+          "description": "bimm 카탈로그의 이름. createModel(library, factory, args) 가 library 와 함께 이것을 받는다.",
+          "examples": [
+            "resnet18"
+          ]
+        },
+        "args": {
+          "type": "object",
+          "description": "팩토리가 받는 인자. **전부 적어야 한다 — 기본값은 없다.** 빠뜨리면 카탈로그가 거절하고(bimm 의 checkArgs), 모르는 인자도 거절한다. 기본값으로 메우면 그 값을 바꾸는 날 이미 배포된 매니페스트가 다른 모델을 만드는데, 가중치는 모양이 맞으니 실린 다음 틀린 수를 낸다. 규격은 bimm 의 factorySpec(library, factory) 이 말해 준다."
+        },
+        "library": {
+          "type": "string",
+          "description": "factory 이름이 어느 카탈로그의 것인가. **이름공간이 없으면 이 필드는 언젠가 거짓말이 된다** — 실제 생태계에서 torchvision 의 resnet18 과 timm 의 resnet18 은 다른 모델이고 가중치가 안 호환된다. 우리도 borchvision 과 bimm 이 둘 다 생기면 같은 자리에 선다. 카탈로그 코드가 지금 어디 있든(bimm 안이다) 이 이름은 **규약**을 가리킨다 — bimm 이 borchvision 의 아키텍처를 들고 있는 것은 모순이 아니라 설계다.",
+          "examples": [
+            "borchvision",
+            "bimm"
+          ]
+        }
+      }
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "sha256",
+        "bytes",
+        "format"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "CDN 주소. 이 저장소에는 바이트가 없다."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "받은 바이트 전체의 해시. 로더가 loadStateDict 전에 대조한다 — 안 맞으면 멈춘다."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "받기 전에 사용자에게 알려줄 수 있어야 한다. 45MB 를 말없이 받는 라이브러리는 쓰이지 않는다."
+        },
+        "format": {
+          "const": "safetensors",
+          "description": "pickle 은 브라우저로 옮길 수도 없고 옮겨서도 안 된다. 머리가 JSON 이라 range 요청으로 텐서 하나만 뽑는 부분 로드도 이 형식이 공짜로 준다."
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "어디서 도는가. semver 하나로 안 되는 이유는 런타임이 셋이고(numpy 파이썬 · borch.ts · borch-webgpu) 파이썬 판과 npm 판의 버전이 따로 가기 때문이다.",
+      "anyOf": [
+        {
+          "required": [
+            "ts"
+          ],
+          "properties": {
+            "ts": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "required": [
+            "py"
+          ],
+          "properties": {
+            "py": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "npm `borch` 의 semver 범위. null 이면 이 런타임을 지원하지 않는다.",
+          "examples": [
+            ">=0.1.0"
+          ]
+        },
+        "py": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "PyPI `borch` 의 semver 범위."
+        },
+        "webgpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required"
+          ],
+          "description": "받기 전에 판정할 수 있어야 한다. 45MB 를 받고 나서 '안 됩니다'는 배지가 아니다.",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "description": "GPUAdapter 의 limits 중 이 모델이 요구하는 최소값. 클라이언트가 어댑터를 잡은 뒤 대조한다.",
+              "examples": [
+                {
+                  "maxStorageBufferBindingSize": 134217728
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputUrl",
+        "outputUrl",
+        "rtol",
+        "atol"
+      ],
+      "description": "배지가 주장이 아니라 사실이 되는 자리. 받는 쪽이 스스로 돌려 대조한다.",
+      "properties": {
+        "inputUrl": {
+          "type": "string",
+          "format": "uri-reference"
+        },
+        "outputUrl": {
+          "type": "string",
+          "format": "uri-reference"
+        },
+        "rtol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "atol": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "values",
+        "measuredBy",
+        "measuredAt"
+      ],
+      "description": "누가 언제 무엇으로 쟀는지가 없는 수는 수가 아니다.",
+      "properties": {
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          },
+          "examples": [
+            {
+              "top1": 0.912
+            }
+          ]
+        },
+        "measuredBy": {
+          "type": "string",
+          "description": "런타임·버전·브라우저·장치까지. 손으로 돌리므로 이 문자열이 유일한 기록이다.",
+          "examples": [
+            "borch.ts 0.1.0 / Chrome 141 / Apple M2 Pro"
+          ]
+        },
+        "measuredAt": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "origin": {
+      "enum": [
+        "trained-by-borch",
+        "converted-from-torch"
+      ],
+      "description": "우리가 잰 수와 남이 발표한 수를 처음부터 다른 이름으로 부른다. converted-from-torch 인 모델의 metrics 를 발표된 top-1 과 비교하면 안 된다 — 비트 동등은 borch 의 명시적 비목표다."
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weights"
+      ],
+      "properties": {
+        "weights": {
+          "type": "string",
+          "description": "SPDX 식별자 또는 URL."
+        },
+        "data": {
+          "type": "string",
+          "description": "학습에 쓴 데이터의 조건. 가중치가 그 조건을 물려받는 경우가 있어서 따로 적는다.",
+          "examples": [
+            "CIFAR-10 (research use)"
+          ]
+        }
+      }
+    },
+    "attestation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "default": null,
+      "description": "검증 증거가 붙는 자리. 지금은 비어 있다 — 첫 재고가 우리가 직접 학습한 것이라 서명할 상대가 없기 때문이다. 남의 모델을 받기 시작하면 여기에 SEAL 레코드가 들어온다. 자리를 미리 비워 두는 것은 그때 스펙을 안 깨기 위해서다."
+    },
+    "preprocess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputSize",
+        "valueRange",
+        "mean",
+        "std"
+      ],
+      "description": "이미지 한 장이 이 모델의 입력 텐서가 되기까지. **이것이 없으면 모델은 실리는데 못 쓴다** — 받는 쪽이 어떤 정규화를 거쳐야 하는지 모른다. 판 1 의 첫 화물이 정확히 그 상태로 나갔다.",
+      "properties": {
+        "inputSize": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "(C, H, W). 배치 축은 빼고 적는다."
+        },
+        "valueRange": {
+          "enum": [
+            "unit"
+          ],
+          "description": "정규화 **전** 값의 범위. `unit` 은 [0,1] 이고 uint8 을 255 로 나눈 것이다(ToTensor 의 규칙). 다른 범위가 필요해지면 그때 이름을 늘린다 — 지금 없는 것을 미리 적으면 아무도 안 지키는 약속이 된다."
+        },
+        "mean": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1
+        },
+        "std": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 1
+        },
+        "resize": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "shortSide",
+            "interpolation"
+          ],
+          "description": "짧은 변을 맞추고 비율을 지킨다 — torchvision 의 `Resize(int)` 와 같은 규칙이다. **`bilinear` 은 안티에일리어싱을 포함한다**(torchvision 의 기본값). 끈 것과의 차이가 8×8→4×4 에서 최대 0.0301 이라(실측) 어느 쪽인지 안 적으면 스펙이 빈 것이고, 켠 것으로 학습한 모델에 끈 것을 넣으면 입력이 다르다. 확대일 때는 두 갈래가 같아진다.",
+          "properties": {
+            "shortSide": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "interpolation": {
+              "enum": [
+                "nearest",
+                "bilinear",
+                "bicubic"
+              ]
+            }
+          }
+        },
+        "centerCrop": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "(H, W). 가운데를 잘라내고, **자를 크기가 원본보다 크면 0 으로 채운 뒤 자른다** — torchvision 이 그렇게 한다. 자를 자리를 정할 때 절반은 **짝수로 반올림**한다(파이썬 `round` 의 규칙이고 torchvision 이 그것을 쓴다) — JS 의 `Math.round` 로 구현하면 한 칸 어긋나 최대 0.837 이 갈린다(실측)."
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "나온 수를 어떻게 읽는가. 전처리의 반대쪽이고 없으면 argmax 가 3 이라는 것까지만 알 수 있다.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "logits"
+          ],
+          "description": "지금은 분류뿐이다. 검출·분할이 오면 여기서 갈리고, 그때 classes 말고 다른 것이 붙는다."
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "logits 의 자리마다 무엇인가. 길이가 arch 의 출력 수와 같아야 하고, 그것을 검사는 실제로 모델을 돌려 본다."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 2
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "schemaVersion",
+          "name",
+          "version",
+          "arch",
+          "weights",
+          "runtime",
+          "sample",
+          "origin",
+          "license",
+          "preprocess",
+          "outputs"
+        ],
+        "properties": {
+          "arch": {
+            "required": [
+              "factory",
+              "library"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
