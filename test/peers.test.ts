@@ -29,8 +29,17 @@ interface Manifest {
   readonly devDependencies: Readonly<Record<string, string>>;
 }
 
+/** 잠금 파일이 뿌리 패키지에 대해 적어 둔 것. `packages[""]` 가 그 자리다. */
+interface Lock {
+  readonly packages: Readonly<Record<string, Partial<Manifest>>>;
+}
+
 function manifest(): Manifest {
   return JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as Manifest;
+}
+
+function lock(): Lock {
+  return JSON.parse(readFileSync(join(ROOT, "package-lock.json"), "utf8")) as Lock;
 }
 
 test("peer 범위가 0.x 의 새 마이너를 배제하지 않는다", () => {
@@ -57,6 +66,30 @@ test("검사가 도는 카탈로그도 같은 규칙을 따른다", () => {
     const range = dev[name];
     assert.ok(range !== undefined, `${name} 이 devDependencies 에 있어야 합니다`);
     assert.ok(!range.startsWith("^0."), `${name}: '${range}' — 위와 같은 이유`);
+  }
+});
+
+test("잠금 파일이 같은 범위를 적고 있다", () => {
+  // **CI 는 `npm ci` 다 — 실제로 깔리는 것을 정하는 것은 잠금 파일이지 `package.json`
+  // 이 아니다.** 그래서 위 두 검사만으로는 부족했다: `package.json` 을 넓혀도 잠금
+  // 파일에 `^0.2.3` 이 남아 있으면 CI 는 계속 0.2.x 만 보고, 새 마이너가 허브를
+  // 깨는 날 그것을 아무도 못 본다. 실제로 그렇게 어긋나 있었다.
+  //
+  // `npm ci` 는 이 어긋남을 안 막는다 — 잠긴 판이 선언한 범위를 만족하기만 하면
+  // 통과다. 즉 **좁아진 것은 오류로 안 보인다.** 그 구별을 여기서 한다.
+  const declared = manifest();
+  const recorded = lock().packages[""];
+  assert.ok(recorded !== undefined, "잠금 파일에 뿌리 패키지가 있어야 합니다");
+
+  for (const kind of ["peerDependencies", "devDependencies"] as const) {
+    for (const [name, range] of Object.entries(declared[kind])) {
+      assert.equal(
+        recorded[kind]?.[name],
+        range,
+        `${kind}.${name}: package.json 은 '${range}' 인데 잠금 파일은 `
+        + `'${String(recorded[kind]?.[name])}' 입니다 — \`npm install\` 로 맞출 것`,
+      );
+    }
   }
 });
 
