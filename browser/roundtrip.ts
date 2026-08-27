@@ -12,9 +12,9 @@
 import { init } from "borch-ts";
 
 import {
-  createModelFor, load, fetchManifest, readOutput, transformFor, BorchHubError,
+  createModelFor, load, fetchManifest, readOutput, resolve, transformFor, BorchHubError,
 } from "../src/index.js";
-import { noGrad, vision } from "borch-ts";
+import { decode, encode, noGrad, vision } from "borch-ts";
 import { verify } from "../src/verify.js";
 
 /**
@@ -217,6 +217,47 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     URL.revokeObjectURL(url);
   }
   add("해시가 틀리면 거절한다", refused, how);
+
+  // --- 텐서가 여럿인 샘플 -------------------------------------------------
+  //
+  // **이 갈래는 여기서만 밟힌다.** 노드는 못 본다 — `decode` 가 텐서를 만들고 텐서는
+  // 장치를 요구한다. 진짜 화물로도 안 밟힌다 — 레지스트리의 샘플 파일은 전부 텐서가
+  // 하나뿐이다. 그래서 지금까지 이 방어는 **옳은지 그른지 아무도 모르는 채**로 있었고,
+  // 되살리기 표에 초록으로 남아 있었다.
+  //
+  // 없는 파일을 짓는 대신 **있는 샘플을 두 번 담는다.** 새 텐서를 만들면 그 값이
+  // 맞는지가 또 하나의 물음이 되는데, 여기서 묻는 것은 값이 아니라 **개수**다.
+  step("샘플에 텐서를 둘 넣어 거절을 본다");
+  const sampleBytes = await (await fetch(
+    resolve(manifestUrl, manifest.sample.inputUrl))).arrayBuffer();
+  const only = decode(new Uint8Array(sampleBytes)).tensors;
+  const firstName = Object.keys(only)[0];
+  const firstTensor = firstName === undefined ? undefined : only[firstName];
+  let doubled = false;
+  let doubledHow = "샘플에서 텐서를 못 꺼냈다 — 이 단계가 아무것도 안 물었다";
+  if (firstTensor !== undefined) {
+    const twice = await encode({ a: firstTensor, b: firstTensor });
+    const twiceUrl = URL.createObjectURL(
+      new Blob([twice as unknown as BlobPart], { type: "application/octet-stream" }));
+    const ambiguous = {
+      ...manifest,
+      sample: { ...manifest.sample, inputUrl: twiceUrl },
+    };
+    doubledHow = "거절하지 않았다 — 배지가 파일에 적힌 순서로 하나를 골랐다";
+    try {
+      await verify(loaded.model, ambiguous, manifestUrl);
+    } catch (err) {
+      // 개수를 **말했는지**까지 본다. 그냥 멈추기만 하면 받는 쪽은 자기 파일이
+      // 무엇이 문제인지 모른 채 우리에게 물어보게 된다.
+      doubled = err instanceof BorchHubError && err.message.includes("텐서가 2 개");
+      doubledHow = doubled
+        ? "몇 개가 들었는지 말하며 멈췄다"
+        : `다른 이유로 멈췄다: ${String(err)}`;
+    } finally {
+      URL.revokeObjectURL(twiceUrl);
+    }
+  }
+  add("샘플에 텐서가 여럿이면 거절한다", doubled, doubledHow);
 
   const ok = checks.every((c) => c.ok);
   const lines = [
