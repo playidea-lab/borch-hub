@@ -19,6 +19,22 @@ const { model, manifest } = await load("https://.../manifest.json");
 const badge = await verify(model, manifest, "https://.../manifest.json");
 ```
 
+**무엇이 있는지부터** 물을 수 있다. 오래 그러지 못했다 — 입구가 `load(주소)` 하나여서
+**쓰는 사람이 주소를 이미 알고 있어야** 했고, 모델이 스물이 되고서야 그 구멍이 보였다.
+
+```ts
+import { fetchIndex, newest } from "borch-hub";
+
+const listing = await fetchIndex("https://models.pilab.kr/index.json");
+for (const model of newest(listing)) {
+  console.log(model.name, model.version, model.bytes, model.manifestUrl);
+}
+```
+
+목차는 나간 판을 **전부** 들고 있다 — 옛 주소가 죽으면 남의 페이지가 깨지기 때문이다.
+그래서 그대로 늘어놓으면 같은 모델이 여러 번 보인다(지금 스물 중 열이 그렇다).
+`newest` 가 이름마다 가장 높은 판만 남긴다.
+
 **순서가 요점이다** — 환경 판정 → 받기 → 해시 대조 → 싣기. 앞의 둘이 뒤바뀌면
 45MB 를 받은 뒤에 "이 브라우저에서는 안 됩니다" 라고 말하게 되고, 그건 배지가
 아니라 사과다. 해시를 싣기 전에 보는 것도 같은 이유다 — 모양이 맞는 틀린 바이트는

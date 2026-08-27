@@ -88,6 +88,16 @@ const DEFECTS = [
     caughtBy: "스키마가 허용하는 값을 거울도 전부 받는다",
   },
   {
+    name: "index-versions-compared-as-text",
+    what: "판을 글로 견준다 — 1.0.10 이 1.0.9 보다 뒤진다",
+    file: "src/listing.ts",
+    // 지금 목차에는 1.0.0 과 1.0.1 뿐이라 **글로 견줘도 맞는 답이 나온다.** 열 번째
+    // 수정판이 나가는 날 조용히 틀리기 시작하고, 그날 이것을 의심할 사람은 없다.
+    find: "    if (x !== y) return x > y;",
+    with: "    if (x !== y) return String(x) > String(y);",
+    caughtBy: "판을 수로 견준다 — 글로 견주면 1.0.10 이 1.0.9 보다 뒤진다",
+  },
+  {
     name: "lockfile-narrower-than-package-json",
     what: "잠금 파일이 캐럿으로 좁아져 CI 가 옛 판만 본다",
     file: "package-lock.json",
