@@ -38,6 +38,9 @@ export { sha256Hex } from "./hash.js";
 // 임포트한다 — 이 패키지를 거쳐 가게 만들면 아키텍처 하나 쓰려고 매니페스트·해시·
 // 환경 판정을 전부 끌어오게 되고, 그 방향이 정확히 둘을 가른 이유다.
 export { createModelFor } from "./arch.js";
+export {
+  fetchIndex, newest, parseListing, type Listed, type Listing,
+} from "./listing.js";
 
 export {
   BorchHubError,
