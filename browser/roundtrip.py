@@ -21,6 +21,7 @@
 """
 
 import json
+import os
 import sys
 import time
 
@@ -129,16 +130,7 @@ def _run(port: int, manifest_url: str, argv: list[str]) -> int:
             page.on("crash", lambda _p: print("  [페이지가 죽었다]", flush=True))
             page.goto(f"http://127.0.0.1:{port}/borch-hub/browser/roundtrip.html"
                       f"?manifest={manifest_url}")
-            # **판정은 줄로 온다. 값으로 읽어 가지 않는다.**
-            #
-            # 전에는 `window.__borchHubRoundtrip` 이 설 때까지 기다렸다. 큰 화물에서
-            # 그 기다림은 **끝나지 않는다** — 값은 제대로 서고 `typeof` 도 맞는데,
-            # 그 직후에 건 300ms 짜리 `setTimeout` 이 끝내 안 돈다(실측). 페이지의
-            # 메인 스레드가 그 시점부터 멎고, playwright 의 기다림은 rAF 로 보든
-            # 시계로 보든 그 스레드에서 도므로 둘 다 굶는다. 21MB 화물은 통과하고
-            # 31~49MB 만 10 분을 꽉 채운 것이 그것이었다 — 크기의 임계값이 아니다.
-            #
-            # 왜 멎는지는 모른다. 아는 것은 **멎기 전에 판정 줄이 나간다**는 것이다.
+            # **판정은 줄로 온다.** 페이지가 한 줄을 내보내고 여기서 그것을 담는다.
             deadline = time.monotonic() + TIMEOUT_MS / 1000
             while verdict["value"] is None and time.monotonic() < deadline:
                 page.wait_for_timeout(POLL_MS)
@@ -146,9 +138,43 @@ def _run(port: int, manifest_url: str, argv: list[str]) -> int:
                 print(f"판정이 {TIMEOUT_MS // 1000}초 안에 오지 않았다.", flush=True)
                 return 1
             result = verdict["value"]
+            # **판정을 여기서 찍는다 — `with` 를 나가기 전에.**
+            #
+            # 밖에 두면 `browser.close()` 가 먼저 돌고, 그것이 **큰 화물에서
+            # 돌아오지 않는다**(실측). 검사는 21 초에 다 끝나 있는데 아무것도 안
+            # 찍힌 채 10 분 한도를 채웠고, 화물이 클수록 어김없이 그랬다 — 49MB 는
+            # 매번, 31~37MB 는 절반쯤, 21~23MB 는 통과했다.
+            #
+            # 그 증상을 나는 "페이지가 멎는다" 로 읽었고 원인을 페이지 안에서
+            # 넷이나 찾았다. 페이지는 멀쩡했다. 계측해 보니 힙은 한도의 5% 였고
+            # microtask·rAF·setTimeout 이 전부 돌고 있었다. **닫는 쪽이 문제였다.**
+            print(result["text"], flush=True)
+            code = 0 if result["ok"] else 1
+            # **여기서 끝낸다.** 답은 이미 찍혔고, 남은 것은 뒷정리뿐인데 그
+            # 뒷정리가 돌아오지 않는다 — `with` 를 나가면 `browser.close()` 가
+            # 돌고 큰 화물에서 그것이 매달린다. 판정을 안으로 옮긴 뒤에도
+            # 세 화물이 전부 답을 찍은 채로 시간 한도를 채웠다(실측).
+            #
+            # 그래서 브라우저를 먼저 거두고 프로세스를 그 자리에서 내린다.
+            # `os._exit` 는 정리 절차를 건너뛴다 — 여기서는 그것이 목적이다.
+            sys.stdout.flush()
+            _reap()
+            os._exit(code)
 
-    print(result["text"])
-    return 0 if result["ok"] else 1
+    _reap()
+    return 1
+
+
+def _reap() -> None:
+    """**남은 브라우저를 거둔다.**
+
+    `browser.close()` 가 돌아오지 않는 자리가 있어서 판정을 그 앞에서 찍는다. 그러면
+    닫히지 않은 브라우저가 남고, 그것들이 쌓이면 GPU 를 나눠 쓰게 되어 다음 실행이
+    몇 배로 느려진다 — 한 번은 91 분짜리 하나가 살아서 모든 증상을 흐렸다.
+    """
+    import subprocess
+    subprocess.run(["pkill", "-f", "ms-playwright/chromium"],
+                   capture_output=True, check=False)
 
 
 if __name__ == "__main__":
