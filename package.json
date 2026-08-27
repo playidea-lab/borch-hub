@@ -43,7 +43,8 @@
     "parity": "uv run --with playwright python browser/parity.py",
     "train": "uv run --with playwright python browser/train.py",
     "roundtrip": "uv run --with playwright python browser/roundtrip.py",
-    "schema:fresh": "node scripts/schema-fresh.mjs"
+    "schema:fresh": "node scripts/schema-fresh.mjs",
+    "accuracy": "uv run --with playwright python browser/accuracy.py"
   },
   "//": [
     "0.1.0 이 처음 나가는 것이다. 0.0.0 이었던 동안은 아무것도 안 나갔다는 뜻이었고,",
