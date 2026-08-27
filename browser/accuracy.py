@@ -45,7 +45,8 @@ OUT = HUB / "out" / "accuracy"
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--manifest", required=True, help="매니페스트 주소")
+    ap.add_argument("--manifest", required=True,
+                    help="매니페스트 주소, 또는 이 저장소 안의 경로")
     ap.add_argument("--images", default=IMAGES, help=f"사진 폴더 (기본 {IMAGES})")
     ap.add_argument("--limit", type=int, default=1000)
     ap.add_argument("--headed", action="store_true")
@@ -85,8 +86,15 @@ def _run(port: int, args: argparse.Namespace) -> int:
 
         page.on("console", lambda m: heard(m.text))
         images = f"http://127.0.0.1:{port}/borch-hub/{args.images}/index.json"
+        # **아직 안 나간 매니페스트도 잰다.** 화물이 CDN 에 서기 전에 수를 알아야
+        # 매니페스트에 그 수를 적은 채로 내보낼 수 있다 — 나간 뒤에 고치면 이미
+        # 받아 간 사람의 것과 갈린다. 주소를 여기서 만드는 것은 포트를 러너만
+        # 알기 때문이고, `roundtrip` 이 레지스트리 매니페스트에 쓰는 방식과 같다.
+        manifest = args.manifest
+        if not manifest.startswith("http"):
+            manifest = f"http://127.0.0.1:{port}/borch-hub/{manifest}"
         page.goto(f"http://127.0.0.1:{port}/borch-hub/browser/accuracy.html"
-                  f"?manifest={args.manifest}&images={images}&limit={args.limit}")
+                  f"?manifest={manifest}&images={images}&limit={args.limit}")
 
         deadline = time.monotonic() + TIMEOUT_MS / 1000
         while verdict["value"] is None and time.monotonic() < deadline:
@@ -105,9 +113,13 @@ def _run(port: int, args: argparse.Namespace) -> int:
             _reap()
             os._exit(1)
 
-        name = args.manifest.rstrip("/").split("/")[-3:-1]
+        # 이름은 주소의 `<모델>/<판>` 두 칸에서 온다. 로컬 경로에는 그 두 칸이
+        # 없어서 처음에는 파일이 `.json` 하나로 떨어졌다 — 이름 없는 결과는
+        # 다음 실행이 말없이 덮어쓴다.
+        parts = args.manifest.rstrip("/").split("/")[-3:-1]
+        stem = "-".join(parts) if len(parts) == 2 else pathlib.Path(args.manifest).stem
         OUT.mkdir(parents=True, exist_ok=True)
-        where = OUT / f"{'-'.join(name)}.json"
+        where = OUT / f"{stem}.json"
         where.write_text(json.dumps({
             "manifest": args.manifest,
             "metric": "top1_imagenetv2",
