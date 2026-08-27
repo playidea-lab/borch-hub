@@ -1,25 +1,22 @@
 {
-  // 브라우저 하네스. **옆에 나란히 받아둔 코어가 있어야 돌고, 그것이 의도다.**
+  // 브라우저 하네스. **이제 옆에 받아둔 코어가 필요 없다.**
   //
-  // ## 왜 배포되는 코드와 갈라놓았나
+  // ## 왜 아직 갈라져 있나
   //
-  // `parity.ts` 와 `train.ts` 는 코어의 **벤치 모듈**(`@core/bench`·`@core/accuracy`)을
-  // 쓴다. 공개된 진입점이 아니라서 npm 배포에 실리지 않고, 그 파일들은 코어를 상대
-  // 경로(`../src/...`)로 끌어온다 — 즉 **옆의 코어를 싣는다.**
+  // `parity.ts` 와 `train.ts` 는 코어의 벤치 모듈(`@core/bench`·`@core/accuracy`)을
+  // 쓴다. 공개된 진입점이 아니라 이름을 따로 두고, 배포되는 `src/` 는 그것을 모른다.
+  // 갈래가 남은 이유는 그 하나다 — **못 받아서가 아니라, 공개 표면이 아니어서**다.
   //
-  // 그래서 이 프로그램에서 `borch-ts` 를 설치된 것으로 두면 코어가 **두 벌**이 된다.
-  // 텐서 두 벌은 같은 GPU 장치를 공유하지 않아 조용히 안 맞는다. 페이지의 임포트 맵도
-  // 같은 이유로 이 둘을 옆의 코어로 잇는다.
-  //
-  // 배포되는 `src/` 는 반대다 — 설치된 것에서 온다. 그쪽이 사용자가 겪는 배치이고,
-  // 그래서 CI 가 토큰 없이 보는 것도 그쪽이다.
+  // 전에는 이 파일이 `../borch` 를 가리켰다. 벤치가 npm 배포에 없어서 옆에 받아둔
+  // 코어를 쓸 수밖에 없었고, 그러면 코어가 두 벌이 되므로 `borch-ts` 까지 그쪽으로
+  // 끌어와야 했다. 코어가 `dist/test` 를 싣기 시작하면서(0.2.2) 둘 다 사라졌다 —
+  // 벤치도 코어도 `node_modules` 에서 오고, **한 벌이다.**
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "borch-ts": ["../borch/borch-ts/dist/src/index.d.ts"],
-      "@core/bench": ["../borch/borch-ts/dist/test/bench.d.ts"],
-      "@core/accuracy": ["../borch/borch-ts/dist/test/accuracy.d.ts"]
+      "@core/bench": ["./node_modules/borch-ts/borch-ts/dist/test/bench.d.ts"],
+      "@core/accuracy": ["./node_modules/borch-ts/borch-ts/dist/test/accuracy.d.ts"]
     }
   },
   // `src` 가 같이 있는 것은 `roundtrip.ts` 가 그것을 부르기 때문이다.

@@ -109,19 +109,20 @@ npm run check         # 타입만
 아니라 **레지스트리의 유사성 필터가 `borch` 도 `bimm` 도 막기 때문**이다(둘 다 403 을
 받고 알았다). 저장소 이름은 접미사 없는 쪽 그대로다.
 
-### 브라우저 하네스는 옆의 코어가 필요하다
-
-`parity` 와 `train` 은 코어의 **벤치 모듈**을 쓰는데, 공개 진입점이 아니라 npm 배포에
-안 실린다. 그래서 이 둘만 옆에 받아둔 코어를 본다 — 그리고 코어를 두 벌 싣지 않으려고
-이 하네스는 코어 전체를 옆의 것으로 잡는다.
+### 브라우저 하네스
 
 ```bash
-git clone git@github.com:playidea-lab/borch.git ../borch
-cd ../borch && npm ci && npm run build:ts && cd -
-
 npm run build:browser   # 하네스 방출
 npm run check:browser   # 하네스 타입만
 ```
+
+**옆에 코어를 받아둘 필요가 없다.** `parity` 와 `train` 이 쓰는 코어의 벤치 모듈이
+`borch-ts` 0.2.2 부터 배포에 실린다(`dist/test/bench`·`accuracy`). 그전에는 옆에
+받아둔 코어에서 가져올 수밖에 없었고, 그러면 코어가 두 벌이 되므로 하네스 전체를
+그쪽으로 잡아야 했다 — 이제 벤치도 코어도 `node_modules` 에서 오고 **한 벌이다.**
+
+하네스가 여전히 별도 `tsconfig` 인 것은 다른 이유다: `@core/*` 는 **공개된 진입점이
+아니다.** 배포되는 `src/` 는 그것을 몰라야 한다.
 
 ### 두 벌 대조
 
