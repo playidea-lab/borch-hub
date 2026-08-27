@@ -14,7 +14,7 @@
  * 없어도 시그니처에 자리를 비워 둔다 — 나중에 넣으면 이미 쓰고 있는 쪽이 깨진다.
  */
 
-import { nn } from "borch-ts";
+import { nn, VERSION } from "borch-ts";
 
 import { sha256Hex } from "./hash.js";
 import { BorchHubError, parseManifest, type Manifest } from "./manifest.js";
@@ -96,6 +96,41 @@ export async function fetchManifest(url: string, opts: LoadOptions = {}): Promis
   return parseManifest(await res.json());
 }
 
+/**
+ * 매니페스트가 요구하는 판을 **이 판이 만족하는지.** 만족하면 `null`, 아니면 이유.
+ *
+ * ## 아는 형식 하나만 안다
+ *
+ * 레지스트리에 실제로 쓰이는 것은 `>=X.Y.Z` 하나다. semver 의 나머지 문법(`^`·`~`·
+ * `||`·범위 두 개)은 여기 없고, **모르는 형식은 추측하지 않고 거절한다.**
+ *
+ * 통과시키는 쪽으로 기울이지 않는 이유: 이 검사가 있는 자리는 **45MB 를 받기 전**이다.
+ * 모르는 것을 통과시키면 못 돌 모델을 받게 하고, 그 실패는 훨씬 안쪽에서 난다. 반대로
+ * 잘못 막으면 받는 쪽이 그 자리에서 무엇이 문제인지 읽는다 — 두 실수의 값이 다르다.
+ *
+ * 새 문법이 매니페스트에 필요해지는 날 여기 더한다. 그날까지 없는 것이 틀린 답보다 낫다.
+ */
+function tooOld(range: string, running: string): string | null {
+  const asked = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(range.trim());
+  if (asked === null) {
+    return `${range} 는 이 로더가 읽을 줄 아는 형식이 아닙니다 — '>=X.Y.Z' 만 압니다.\n`
+      + "  추측해서 통과시키지 않습니다. 매니페스트를 그 형식으로 적어 주십시오.";
+  }
+  const have = /^(\d+)\.(\d+)\.(\d+)/.exec(running);
+  if (have === null) return null; // 우리 판을 못 읽으면 대조할 수 없다 — 막지는 않는다
+
+  for (let i = 1; i <= 3; i++) {
+    const want = Number(asked[i]);
+    const got = Number(have[i]);
+    if (got > want) return null;
+    if (got < want) {
+      return `${range} 가 필요한데 이 borch-ts 는 ${running} 입니다.\n`
+        + "  받기 전에 멈춥니다 — 실으면 더 안쪽에서 다른 말로 실패합니다.";
+    }
+  }
+  return null;
+}
+
 export interface EnvironmentReport {
   readonly ok: boolean;
   /** 왜 안 되는지. 비어 있으면 된다. */
@@ -115,9 +150,6 @@ export async function checkEnvironment(manifest: Manifest): Promise<EnvironmentR
   // 파이썬 쪽만 두고 나간 것이다 — 가중치는 실리지만 이 라이브러리가 만들 층이 없다.
   // 판정을 받기 전에 하는 이유가 여기서도 같다: 45MB 를 받고 나서 알 일이 아니다.
   //
-  // 범위(`>=0.1.0`)는 **못 본다.** 코어가 자기 버전을 내놓지 않아서 비교할 수가 없다.
-  // 짐작해서 통과시키는 것보다 못 본다고 적어두는 편이 낫다 — 코어가 버전을 내놓는
-  // 날 이 자리에 비교가 들어간다.
   if (manifest.runtime.ts === null) {
     return {
       ok: false,
@@ -126,6 +158,18 @@ export async function checkEnvironment(manifest: Manifest): Promise<EnvironmentR
         `${manifest.name} 은 이 런타임(borch-ts)을 지원한다고 적혀 있지 않습니다`
         + (manifest.runtime.py !== null ? " — 파이썬 쪽만 있습니다" : ""),
       ],
+    };
+  }
+
+  // **이제 범위를 본다.** 오래 못 봤다 — 코어가 자기 판을 안 내놓아서 대조할 것이
+  // 없었고, 그동안 이 필드는 적히기만 하고 읽히지 않았다. `borch-ts` 0.2.3 이
+  // `VERSION` 을 내보내면서 그 조건이 끝났다.
+  const short = tooOld(manifest.runtime.ts, VERSION);
+  if (short !== null) {
+    return {
+      ok: false,
+      adapter: "(안 봄)",
+      reasons: [short],
     };
   }
 
