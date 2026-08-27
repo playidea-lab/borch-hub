@@ -18,7 +18,7 @@ import { nn, VERSION } from "borch-ts";
 
 import { sha256Hex } from "./hash.js";
 import { BorchHubError, parseManifest, type Manifest } from "./manifest.js";
-import { createModelFor } from "./arch.js";
+import { cannotBuild, createModelFor } from "./arch.js";
 
 /** 받은 것을 다시 안 받으려고 쓰는 통. 판을 이름에 박아 규칙이 바뀌면 갈린다. */
 const CACHE_NAME = "borch-hub-v1";
@@ -171,6 +171,17 @@ export async function checkEnvironment(manifest: Manifest): Promise<EnvironmentR
       adapter: "(안 봄)",
       reasons: [short],
     };
+  }
+
+  // **카탈로그가 이 이름을 아는지도 여기서 본다.** 몰라도 `createModelFor` 가 알려
+  // 주기는 한다 — 다만 그 자리는 가중치를 다 받고 해시까지 맞춘 뒤다. 45MB 를 쓰고
+  // 나서 들을 일이 아니라는 것이 위 두 검사와 같은 이유다.
+  //
+  // 판을 묻지 않고 이름을 묻는다. 매니페스트에는 `bimm` 하한이 없고, 있다 해도
+  // 카탈로그에 새 이름이 생길 때마다 낡는다. **있는지 없는지는 카탈로그가 안다.**
+  const unbuildable = cannotBuild(manifest.arch);
+  if (unbuildable !== null) {
+    return { ok: false, adapter: "(안 봄)", reasons: [unbuildable] };
   }
 
   const need = manifest.runtime.webgpu;

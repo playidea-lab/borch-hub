@@ -73,6 +73,26 @@ const DEFECTS = [
     expect: "green",
   },
   {
+    name: "lockfile-narrower-than-package-json",
+    what: "잠금 파일이 캐럿으로 좁아져 CI 가 옛 판만 본다",
+    file: "package-lock.json",
+    // `npm ci` 는 이것을 안 막는다 — 잠긴 판이 선언 범위를 만족하면 통과다.
+    // 즉 좁아진 것은 오류로 안 보이고, 새 마이너가 깨도 CI 는 초록이다.
+    find: '        "borch-ts": ">=0.2.3 <1.0.0",\n        "typescript"',
+    with: '        "borch-ts": "^0.2.3",\n        "typescript"',
+    caughtBy: "잠금 파일이 같은 범위를 적고 있다",
+  },
+  {
+    name: "catalogue-checked-after-the-download",
+    what: "카탈로그에 없는 이름을 45MB 다 받은 뒤에야 알려 준다",
+    file: "src/load.ts",
+    find: "  const unbuildable = cannotBuild(manifest.arch);",
+    with: "  const unbuildable = null as string | null; void cannotBuild;",
+    // 되돌려도 `createModelFor` 는 여전히 거절한다 — 받은 **뒤에** 한다는 것만 달라진다.
+    // 그래서 "던지는가" 를 보는 검사는 이 결함을 못 잡는다. 잡는 것은 바이트를 세는 쪽뿐이다.
+    caughtBy: "가중치를 **한 바이트도 안 받고** 막는다",
+  },
+  {
     name: "measure-without-await",
     what: "해시·길이 검사를 기다리지 않는다",
     file: "src/load.ts",
