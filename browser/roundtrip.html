@@ -19,7 +19,7 @@
   <h1>borch-hub — 왕복</h1>
   <pre id="out">받는 중…</pre>
   <script type="module">
-    import { report } from "/borch-hub/dist/browser/roundtrip.js";
+    import { report, VERDICT } from "/borch-hub/dist/browser/roundtrip.js";
 
     const out = document.getElementById("out");
     const manifest = new URLSearchParams(location.search).get("manifest");
@@ -30,8 +30,14 @@
       out.textContent = result.text;
     } catch (err) {
       const detail = err && err.stack ? err.stack : String(err);
-      window.__borchHubRoundtrip = { ok: false, text: `왕복하지 못했다: ${detail}` };
-      out.textContent = `왕복하지 못했다: ${detail}`;
+      const failed = { ok: false, text: `왕복하지 못했다: ${detail}` };
+      window.__borchHubRoundtrip = failed;
+      out.textContent = failed.text;
+      // **실패도 판정이다.** 기다리는 쪽은 이 줄 하나만 본다. 성공할 때만
+      // 내보내면 던진 검사는 아무 말 없이 시간 한도를 채우고, 그러면 "고장" 과
+      // "잡았다" 가 화면에서 같은 모양이 된다 — 실제로 그렇게 만들어 놓고
+      // 일부러 부수어 보고서야 알았다.
+      console.log(`${VERDICT}${JSON.stringify(failed)}`);
     }
   </script>
 </body>
