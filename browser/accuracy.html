@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- 사진 천 장을 넣어 얼마나 맞히는지 잰다. 러너가 띄운다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>borch-hub — 정확도</title>
+  <style>
+    body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script type="importmap">
+  { "imports": {
+      "borch-ts": "/borch-hub/node_modules/borch-ts/borch-ts/dist/src/index.js",
+      "bimm-ts": "/borch-hub/node_modules/bimm-ts/dist/src/index.js"
+  } }
+  </script>
+</head>
+<body>
+  <h1>borch-hub — 정확도</h1>
+  <pre id="out">재는 중…</pre>
+  <script type="module">
+    import { report, VERDICT } from "/borch-hub/dist/browser/accuracy.js";
+
+    const out = document.getElementById("out");
+    const q = new URLSearchParams(location.search);
+    try {
+      const manifest = q.get("manifest");
+      const images = q.get("images");
+      if (!manifest) throw new Error("manifest 주소가 없다");
+      if (!images) throw new Error("사진 목록 주소가 없다");
+      const result = await report(manifest, images, Number(q.get("limit") ?? 1000));
+      out.textContent = JSON.stringify(result, null, 2);
+    } catch (err) {
+      const detail = err && err.stack ? err.stack : String(err);
+      out.textContent = `재지 못했다: ${detail}`;
+      // **실패도 판정이다.** 성공할 때만 내보내면 던진 실행이 아무 말 없이 시간
+      // 한도를 채우고, "고장" 과 "잡았다" 가 화면에서 같은 모양이 된다.
+      console.log(`${VERDICT}${JSON.stringify({ error: detail })}`);
+    }
+  </script>
+</body>
+</html>
