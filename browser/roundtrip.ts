@@ -25,6 +25,19 @@ import { verify } from "../src/verify.js";
  */
 const IMAGE_DATASET = "cifar-10";
 
+/**
+ * 시험 이미지 **한 장.** CIFAR-10 시험 덩이의 첫 기록(라벨 1 바이트 + 픽셀 3072)을
+ * 그대로 잘라 둔 것이라 3073 바이트다.
+ *
+ * 전에는 덩이 전체(30.7MB)를 `/borch/` 에서 받았다. 그 마운트는 0.2.2 에서 빠졌고,
+ * 이 검사는 **한 장만 쓰므로** 나머지 9999 장은 처음부터 필요 없었다. 30MB 를
+ * 저장소에 넣지 않고 3KB 를 넣는 쪽이 맞다.
+ *
+ * `serve.py` 가 얹는 접두사 아래여야 한다 — 그 바깥을 가리키면 404 가 오고, 404 는
+ * 여기서 **멈춤이지 통과가 아니다.**
+ */
+const CIFAR_URL = "/borch-hub/test/cifar-first.bin";
+
 export interface Check {
   readonly name: string;
   readonly ok: boolean;
@@ -101,7 +114,20 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     // 이미지를 바꾸면 `IMAGE_DATASET` 도 같이 바꿔야 한다 — 그 둘이 갈리면 정답
     // 대조가 남의 목록을 읽는다.
     step("진짜 이미지 한 장을 넣어 본다");
-    const raw = new Uint8Array(await (await fetch("/borch/cifar-batch-test.bin")).arrayBuffer());
+    // **못 받으면 멈춘다.** 이 주소는 `serve.py` 가 `../borch` 를 얹던 시절의
+    // 것이고, 0.2.2 에서 그 마운트가 빠지면서 404 가 되었다. 그런데도 아래 검사는
+    // **초록이었다** — 받은 것이 없으면 `?? 0` 이 0 을 채우고, 0 으로 채운 그림에도
+    // 모델은 이름 하나를 내놓기 때문이다. 이름이 나오는지만 보는 검사에게 그것은
+    // 통과다. 그래서 이 검사는 한동안 **이미지에 대해 아무것도 묻지 않았다.**
+    const got = await fetch(CIFAR_URL);
+    if (!got.ok) {
+      throw new BorchHubError(
+        `시험 이미지를 못 받았습니다 (${got.status}): ${CIFAR_URL}\n`
+        + "  이 검사는 받는 쪽이 자기 이미지를 어떤 텐서로 만드는지를 봅니다.\n"
+        + "  그림이 없으면 볼 것이 없으므로, 조용히 지나가지 않고 여기서 멈춥니다.",
+      );
+    }
+    const raw = new Uint8Array(await got.arrayBuffer());
     const truth = raw[0] ?? 0;
     const pixels = new Float64Array(height * width * 3);
     // 저장이 R 판 · G 판 · B 판 순서다. (H,W,C) 로 엮는다.
