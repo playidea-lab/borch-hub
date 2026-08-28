@@ -126,6 +126,22 @@ const DEFECTS = [
     caughtBy: "한 바이트만 달라도 해시에서 멈춘다",
   },
   {
+    name: "cache-write-fails-the-load",
+    what: "통에 못 넣으면 다 받은 화물을 실패로 끝낸다",
+    file: "src/load.ts",
+    // **되살리는 것은 가드를 걷는 것**이지 던지기를 하나 더 넣는 것이 아니다.
+    // 처음에 후자로 적었더니 방금 만든 `catch` 가 그것을 삼켜 초록이 나왔다 —
+    // 결함을 심었는데 심어지지 않은 것이다.
+    //
+    // 이 결함은 **큰 화물에서만** 난다. 캐시가 가장 필요한 쪽에서만 죽으므로
+    // 작은 것으로 시험하는 동안에는 영영 안 보인다 — 346MB 를 재다가 걸렸다.
+    find: "    try {\n      await box.put(url, new Response(bytes as unknown as BodyInit));\n"
+      + "    } catch {",
+    with: "    {\n      await box.put(url, new Response(bytes as unknown as BodyInit));\n"
+      + "    } if (false) {",
+    caughtBy: "통에 못 넣어도 실린다",
+  },
+  {
     name: "cache-hit-reports-nothing",
     what: "통에서 꺼낼 때 진행률을 안 알린다",
     file: "src/load.ts",
