@@ -271,7 +271,23 @@ export async function fetchWeights(
 
   // **검사를 지난 뒤에 넣는다.** 전에는 받자마자 넣었는데, 그러면 틀린 바이트가 먼저
   // 통에 들어가고 검사는 그 다음에 실패했다.
-  if (box && !fromCache) await box.put(url, new Response(bytes as unknown as BodyInit));
+  //
+  // **통에 못 넣는 것은 못 받은 것이 아니다.** 바이트는 이미 손에 있고 길이도 해시도
+  // 맞았다. 여기서 던지면 **다 받고 검사까지 통과한 모델이 실패로 끝난다** — 다음
+  // 방문에 다시 받아야 한다는 것이 전부인 일 때문에.
+  //
+  // 실측으로 걸렸다: 346MB 짜리가 `Failed to execute 'put' on 'Cache': Unexpected
+  // internal error` 로 죽었다. Cache API 는 한 항목의 크기에 제 나름의 한계가 있고,
+  // 그 한계는 브라우저마다 다르며 우리가 미리 알 방법이 없다. 큰 화물일수록 이
+  // 자리에서 죽는다는 것은 **큰 화물일수록 캐시가 필요한 것과 정확히 반대**다.
+  if (box && !fromCache) {
+    try {
+      await box.put(url, new Response(bytes as unknown as BodyInit));
+    } catch {
+      // 삼키는 것이 맞는 드문 자리다. 부르는 쪽이 할 수 있는 일이 없고, 결과도
+      // 달라지지 않는다 — 다음에 한 번 더 받을 뿐이다.
+    }
+  }
   return bytes;
 }
 

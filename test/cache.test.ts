@@ -44,6 +44,17 @@ class FakeBox {
   }
 }
 
+/**
+ * **넣기를 거부하는 통.** 진짜 Cache API 가 그렇게 한다 — 한 항목의 크기에 제 나름의
+ * 한계가 있고, 넘으면 `Failed to execute 'put' on 'Cache'` 로 던진다. 346MB 짜리
+ * 화물에서 실측으로 걸렸다.
+ */
+class FullBox extends FakeBox {
+  override async put(): Promise<void> {
+    throw new Error("Failed to execute 'put' on 'Cache': Unexpected internal error.");
+  }
+}
+
 /** 검사 하나 동안만 전역에 통을 놓는다. 끝나면 걷는다. */
 function withBox(box: FakeBox): () => void {
   const holder = globalThis as { caches?: unknown };
@@ -183,4 +194,25 @@ test("진행률 콜백이 던져도 내려받기는 끝난다", async () => {
     onProgress: () => { throw new Error("받는 쪽 코드가 던졌다"); },
   });
   assert.deepEqual([...got], [...bytes]);
+});
+
+test("통에 못 넣어도 실린다", async () => {
+  // **다 받고 길이도 해시도 맞았다.** 그 뒤에 통이 거부한 것은 받는 사람의 결과를
+  // 바꾸지 않는다 — 다음 방문에 한 번 더 받을 뿐이다. 여기서 던지면 통과한 모델이
+  // 실패로 끝나고, 그 실패 문구는 캐시를 가리키므로 아무도 원인을 안 믿는다.
+  //
+  // 그리고 이 실패는 **큰 화물에서만** 난다. 캐시가 가장 필요한 쪽에서만 죽는다.
+  const { bytes, doc } = cargo();
+  const manifest = parseManifest(doc);
+  const box = new FullBox();
+  const put = withBox(box);
+  try {
+    const got = await fetchWeights(manifest, MANIFEST_URL, {
+      fetch: serve(manifest.weights.url, bytes).fetch,
+    });
+    assert.deepEqual([...got], [...bytes], "받은 바이트를 그대로 돌려줘야 합니다");
+    assert.equal(box.kept.size, 0, "못 넣었으므로 통은 비어 있어야 합니다");
+  } finally {
+    put();
+  }
 });
