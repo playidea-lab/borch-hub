@@ -56,6 +56,22 @@ const DEFECTS = [
     caughtBy: "셀 것이 없으면 통과가 아니다",
   },
   {
+    name: "load-hands-over-without-checking",
+    what: "실은 모델을 샘플에 대 보지 않고 건넨다",
+    file: "src/load.ts",
+    // **노드는 못 잡는다** — 대조하려면 텐서가 필요하고 텐서는 장치를 요구한다.
+    // 재는 곳은 브라우저 하네스다("샘플과 어긋나면 `load` 가 거절한다").
+    //
+    // 이 방어가 왜 생겼는지는 borch#122 다: 바이트도 층도 맞는 모델이 이 장치에서
+    // 로짓을 전부 0 으로 냈고, `load` 는 아무 말 없이 그것을 건넸다. 막을 도구는
+    // 이미 있었다 — 아무도 안 불렀을 뿐이다.
+    find: "  if (opts.verify !== false) {",
+    with: "  if (false) {",
+    caughtBy: null,
+    expect: "green",
+    elsewhere: "브라우저 하네스 — npm run roundtrip",
+  },
+  {
     name: "ambiguous-sample-tensor",
     what: "샘플 파일에 텐서가 여럿이면 조용히 첫 번째를 집는다",
     file: "src/verify.ts",

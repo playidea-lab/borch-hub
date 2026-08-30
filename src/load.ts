@@ -19,6 +19,7 @@ import { nn, VERSION } from "borch-ts";
 import { sha256Hex } from "./hash.js";
 import { BorchHubError, parseManifest, type Manifest } from "./manifest.js";
 import { cannotBuild, createModelFor } from "./arch.js";
+import type { VerifyResult } from "./verify.js";
 
 /** 받은 것을 다시 안 받으려고 쓰는 통. 판을 이름에 박아 규칙이 바뀌면 갈린다. */
 const CACHE_NAME = "borch-hub-v1";
@@ -29,6 +30,17 @@ export interface LoadOptions {
   /** Cache API 로 재사용할지. 기본은 쓴다 — 45MB 를 새로고침마다 받을 이유가 없다. */
   readonly cache?: boolean;
   readonly onProgress?: (received: number, total: number) => void;
+  /**
+   * 실은 뒤에 **매니페스트의 샘플로 대 볼지.** 기본은 본다.
+   *
+   * 해시는 받은 바이트가 맞다는 말이고, 이것은 **이 브라우저에서 그 모델이 나온다**는
+   * 말이다. 둘이 벌어질 수 있다 — borch#122 에서 바이트도 층도 맞는 모델이 이 장치에서
+   * 로짓을 전부 0 으로 냈다.
+   *
+   * 끄는 문을 남기는 것은 값 때문이 아니라 **자기 샘플을 못 믿을 이유가 있는 쪽**을
+   * 위해서다. 예를 들어 샘플 자체를 새로 만들고 있는 자리.
+   */
+  readonly verify?: boolean;
   /**
    * **정체로 보기까지의 시간(ms).** 전체 시간이 아니다.
    *
@@ -450,6 +462,14 @@ export interface Loaded {
   readonly manifest: Manifest;
   readonly model: nn.Module;
   readonly environment: EnvironmentReport;
+  /**
+   * 샘플 대조 결과. `verify: false` 로 껐으면 `null`.
+   *
+   * 통과한 것만 돌려준다 — 못 지나가면 `load` 가 던진다. 그래도 값을 주는 것은
+   * **얼마나 여유로 지났는지**가 보여야 하기 때문이다. 허용치에 겨우 걸린 것과
+   * 소수점 여섯째 자리까지 맞은 것은 다른 소식이다.
+   */
+  readonly badge: VerifyResult | null;
 }
 
 /**
@@ -476,5 +496,32 @@ export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise
   // 반환형이 `Savable` 이고, 평평한 표를 꺼내려면 부르는 자리마다 좁혀야 한다. 가중치
   // 파일은 언제나 평평한 상태사전이다 — 남이 만든 safetensors 도 그렇다.
   model.loadStateDict(decode(bytes).tensors);
-  return { manifest, model, environment };
+
+  // **싣고 나서 대 본다.**
+  //
+  // 해시는 **받은 바이트가 맞다**는 말이지 **이 브라우저에서 그 모델이 나온다**는 말이
+  // 아니다. 둘 사이가 벌어질 수 있다는 것을 실측으로 알았다: EfficientNet-B4 는 바이트가
+  // 맞고 층이 맞는데 이 장치에서 로짓이 전부 0 이었다(borch#122). 그때 `load` 는
+  // 아무 말 없이 그 모델을 건네줬고, 받는 쪽에는 신호가 하나도 없었다.
+  //
+  // 잡는 도구는 이미 있었다 — `verify` 가 최대 절대차 1.481 로 막는다. **아무도 안
+  // 불렀을 뿐이다.** 부르지 않는 검사는 없는 검사다.
+  //
+  // 값은 샘플 두 개(600KB 남짓)와 forward 한 번이다. 45MB 를 받은 뒤에 치르기에 싸고,
+  // 큰 화물일수록 더 싸진다 — 그리고 조용히 틀리는 일은 큰 화물에서 난다.
+  let badge: VerifyResult | null = null;
+  if (opts.verify !== false) {
+    const { verify } = await import("./verify.js");
+    badge = await verify(model, manifest, manifestUrl, opts);
+    if (!badge.ok) {
+      throw new BorchHubError(
+        `${manifest.name} ${manifest.version} 이 자기 샘플을 재현하지 못합니다.\n`
+        + `  최대 절대차 ${badge.maxAbs.toExponential(3)} · 수 ${badge.count}개\n`
+        + "  받은 바이트는 맞습니다(해시를 지났습니다). 이 브라우저에서 그 모델이\n"
+        + "  다른 답을 냅니다 — 실어서 쓰면 그 답이 어디서 왔는지 아무도 모릅니다.\n"
+        + "  대조를 건너뛰려면 `load(url, { verify: false })`.",
+      );
+    }
+  }
+  return { manifest, model, environment, badge };
 }
