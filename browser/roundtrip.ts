@@ -14,7 +14,7 @@ import { init } from "borch-ts";
 import {
   createModelFor, load, fetchManifest, readOutput, resolve, transformFor, BorchHubError,
 } from "../src/index.js";
-import { decode, encode, noGrad, vision } from "borch-ts";
+import { decode, encode, noGrad, Tensor, vision } from "borch-ts";
 import { verify } from "../src/verify.js";
 
 /**
@@ -258,6 +258,55 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     }
   }
   add("샘플에 텐서가 여럿이면 거절한다", doubled, doubledHow);
+
+  // --- 샘플과 어긋나는 모델 -------------------------------------------------
+  //
+  // **해시는 바이트가 맞다는 말이지 이 브라우저에서 그 모델이 나온다는 말이 아니다.**
+  // 둘이 벌어지는 것을 실측했다 — EfficientNet-B4 는 바이트도 층도 맞는데 이 장치에서
+  // 로짓이 전부 0 이었다(borch#123). 그때 `load` 는 아무 말 없이 그 모델을 건넸다.
+  //
+  // 이제 `load` 가 싣고 나서 샘플에 대 본다. 여기서 보는 것은 **그 대조가 실제로 막는가**
+  // 다 — 막지 못하면 0 을 답하는 모델이 다시 조용히 나간다.
+  step("샘플과 어긋나게 만들어 거절을 본다");
+  const trueOut = await (await fetch(resolve(manifestUrl, manifest.sample.outputUrl)))
+    .arrayBuffer();
+  const kept = decode(new Uint8Array(trueOut)).tensors;
+  const onlyName = Object.keys(kept)[0];
+  const onlyTensor = onlyName === undefined ? undefined : kept[onlyName];
+  let refusedBadge = false;
+  let badgeHow = "샘플을 못 읽어 이 단계가 아무것도 안 물었다";
+  if (onlyName !== undefined && onlyTensor !== undefined) {
+    // 값을 한 칸 밀어 **모양은 같고 값만 다른** 기대치를 만든다. 크기가 달라지면
+    // 배지가 아니라 크기 검사가 막고, 그것은 다른 것을 확인한 것이 된다.
+    const wrong = await encode({ [onlyName]: onlyTensor.add(Tensor.ones(onlyTensor.shape)) });
+    const wrongUrl = URL.createObjectURL(
+      new Blob([wrong as unknown as BlobPart], { type: "application/octet-stream" }));
+    // 입력도 절대 주소로 바꾼다 — 매니페스트를 `blob:` 으로 내놓는 순간 그것을
+    // 기준으로 상대 경로를 풀 수 없다.
+    const askew = {
+      ...manifest,
+      sample: {
+        ...manifest.sample,
+        inputUrl: resolve(manifestUrl, manifest.sample.inputUrl),
+        outputUrl: wrongUrl,
+      },
+    };
+    const askewUrl = URL.createObjectURL(
+      new Blob([JSON.stringify(askew)], { type: "application/json" }));
+    badgeHow = "거절하지 않았다 — 샘플과 어긋나는 모델이 그대로 나간다";
+    try {
+      await load(askewUrl);
+    } catch (err) {
+      refusedBadge = err instanceof BorchHubError && err.message.includes("재현하지 못합니다");
+      badgeHow = refusedBadge
+        ? "자기 샘플을 재현하지 못한다며 멈췄다"
+        : `다른 이유로 멈췄다: ${String(err)}`;
+    } finally {
+      URL.revokeObjectURL(wrongUrl);
+      URL.revokeObjectURL(askewUrl);
+    }
+  }
+  add("샘플과 어긋나면 `load` 가 거절한다", refusedBadge, badgeHow);
 
   const ok = checks.every((c) => c.ok);
   const lines = [
