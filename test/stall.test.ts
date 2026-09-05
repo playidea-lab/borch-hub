@@ -93,6 +93,31 @@ function trickle(
   )) as unknown as typeof fetch;
 }
 
+/**
+ * `trickle` 과 같되 **부른 쪽의 signal 을 지킨다** — 진짜 `fetch` 처럼. signal 이 울리면
+ * 몸통 스트림이 `AbortError` 로 깨진다. `trickle` 은 두 번째 인자를 무시해서, 시계가
+ * 몸통에까지 붙어 있어도 그 검사는 통과했다; 이것이 그 구멍을 막는다.
+ */
+function obedient(bytes: Uint8Array, count: number, gap: number): typeof fetch {
+  return (async (_url: string, init?: RequestInit): Promise<Response> => new Response(
+    new ReadableStream<Uint8Array>({
+      async pull(controller): Promise<void> {
+        for (let i = 0; i < count; i++) {
+          if (init?.signal?.aborted) {
+            controller.error(new DOMException("The user aborted a request.", "AbortError"));
+            return;
+          }
+          await sleep(gap);
+          const size = Math.ceil(bytes.length / count);
+          controller.enqueue(bytes.slice(i * size, (i + 1) * size));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  )) as unknown as typeof fetch;
+}
+
 function rejects(run: () => Promise<unknown>, mentions: string): Promise<void> {
   return assert.rejects(run, (err: unknown) => {
     assert.ok(err instanceof BorchHubError, `BorchHubError 여야 합니다 — ${String(err)}`);
@@ -167,6 +192,18 @@ test("느린 것은 안 끊는다 — 조각이 계속 오면 총 시간이 넘�
   });
   assert.deepEqual([...got], [...bytes]);
   assert.ok(seen.length > 1, "조각마다 진행률이 울려야 합니다");
+});
+
+test("느린 것은 안 끊는다 — signal 을 지키는 서버에서도, 몸통에는 시계가 없다", async () => {
+  // 조각 8 개를 40ms 간격으로 = 총 320ms, 제한 60ms. 위 검사와 같은 모양이지만 이
+  // 서버는 signal 을 **지킨다.** 응답 시작의 시계가 몸통에 남아 있으면 60ms 에 몸통이
+  // 깨지고 `AbortError` 가 올라온다 — 작업대가 실제로 죽은 모양이다.
+  const { bytes, doc } = cargo();
+  const manifest = parseManifest(doc);
+  const got = await fetchWeights(manifest, MANIFEST_URL, {
+    fetch: obedient(bytes, 8, 40), cache: false, timeoutMs: SOON, onProgress: () => undefined,
+  });
+  assert.deepEqual([...got], [...bytes]);
 });
 
 test("메시지가 느린 것이 아니라 멎은 것이라고 말한다", async () => {

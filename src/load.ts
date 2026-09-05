@@ -77,14 +77,27 @@ function stalled(what: string, ms: number): BorchHubError {
   );
 }
 
-/** 응답이 시작되기까지를 잰다. 몸통을 다 받는 시간은 여기서 안 센다. */
+/**
+ * 응답이 시작되기까지를 잰다. 몸통을 다 받는 시간은 여기서 안 센다 — 그 시계는
+ * `nextChunk` 의 것이고, 조각 사이를 잰다.
+ *
+ * **시계는 응답이 오면 끈다.** 전에는 `AbortSignal.timeout(ms)` 를 그대로 넘겼는데,
+ * 그 signal 은 헤더가 온 뒤에도 몸통에 붙어 있어서 **총 `ms` 가 지나면 몸통 읽기를
+ * 끊었다** — `reader.read()` 가 `AbortError: The user aborted a request.` 로 풀리고,
+ * 그것은 정체 메시지도 아니고 이어받기도 안 걸렸다. 위의 주석은 몸통을 안 센다고
+ * 했고 코드는 세고 있었다. 실측: 21MB 를 2.8MB/s 로 받는 날 30 초 안에 못 끝나
+ * 작업대가 세 번 연속 죽었다. 느린 것은 여기서 끊지 않는다 — 멎은 것만 끊는다.
+ * `test/stall.test.ts` 의 "signal 을 지키는 서버" 검사가 이 차이를 지킨다.
+ */
 export async function begin(
   get: typeof fetch, url: string, what: string, ms: number,
   headers?: Record<string, string>,
 ): Promise<Response> {
+  const control = new AbortController();
+  const clock = setTimeout(() => control.abort(new DOMException(`${what}: ${ms}ms`, "TimeoutError")), ms);
   try {
     return await get(url, {
-      signal: AbortSignal.timeout(ms),
+      signal: control.signal,
       ...(headers === undefined ? {} : { headers }),
     });
   } catch (err) {
@@ -93,6 +106,8 @@ export async function begin(
       throw stalled(`${what} 을 받지 못했습니다`, ms);
     }
     throw err;
+  } finally {
+    clearTimeout(clock);
   }
 }
 
