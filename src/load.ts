@@ -494,7 +494,7 @@ export interface Loaded {
  * 멈추고, 그 문구를 우리 말로 바꾸지 않는다.
  */
 export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise<Loaded> {
-  const { decode } = await import("borch-ts");
+  const { decode, device, scope } = await import("borch-ts");
   const manifest = await fetchManifest(manifestUrl, opts);
 
   const environment = await checkEnvironment(manifest);
@@ -510,7 +510,13 @@ export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise
   // `load` 가 아니라 `decode` 다. 코어의 `load` 는 저장할 때의 트리를 그대로 돌려주므로
   // 반환형이 `Savable` 이고, 평평한 표를 꺼내려면 부르는 자리마다 좁혀야 한다. 가중치
   // 파일은 언제나 평평한 상태사전이다 — 남이 만든 safetensors 도 그렇다.
-  model.loadStateDict(decode(bytes).tensors);
+  //
+  // **스코프 안에서.** 디코드된 텐서는 값이 파라미터로 복사되고 나면 쓸 데가 없는데,
+  // 스코프 없이 만든 버퍼는 돌아갈 곳이 없어 영원히 산다. 2026-09-18 실측: ViT-B/16
+  // (346 MB) 를 싣고 나면 GPU 에 +1,193 MB 가 남아 있었다 — 디코드 사본 한 벌과
+  // 아래 검증 forward 의 중간값 전부. 파라미터는 keepAlive 로 잡혀 있으므로 스코프가
+  // 닫혀도 남는 것은 그것뿐이다.
+  await scope(async () => { model.loadStateDict(decode(bytes).tensors); });
 
   // **싣고 나서 대 본다.**
   //
@@ -538,5 +544,8 @@ export async function load(manifestUrl: string, opts: LoadOptions = {}): Promise
       );
     }
   }
+  // 스코프가 돌려준 버퍼는 풀에 남는다 — 가중치 모양이라 학습 루프가 다시 쓸 일이 없는
+  // 크기들이다. 싣는 일은 드무니, 여기서 비운다.
+  device().emptyCache();
   return { manifest, model, environment, badge };
 }
