@@ -14,8 +14,16 @@ import { init } from "borch-ts";
 import {
   createModelFor, load, fetchManifest, readOutput, resolve, transformFor, BorchHubError,
 } from "../src/index.js";
-import { decode, encode, noGrad, Tensor, vision } from "borch-ts";
+import { decode, device, encode, noGrad, Tensor, vision } from "borch-ts";
 import { verify } from "../src/verify.js";
+
+/**
+ * 싣고 나서 GPU 에 남아도 되는 양, 가중치 바이트에 대한 배수. 파라미터 자체가 1.0 이고,
+ * BatchNorm 의 통계 버퍼 같은 작은 것들이 그 위에 얹힌다. **2.0 을 넘던 것이 이 검사의
+ * 이유다** — 스코프 없이 디코드한 사본과 검증 forward 의 중간값이 전부 남아, ViT-B/16
+ * 346 MB 가 +1,193 MB 로 앉아 있었다(2026-09-18 실측, borch `docs/SCALE-MEASURED.md`).
+ */
+const RESIDENT_SLACK = 1.1;
 
 /**
  * 아래에서 읽는 이미지가 **어느 데이터셋의 것인가.**
@@ -81,10 +89,20 @@ export async function report(manifestUrl: string): Promise<RoundtripReport> {
     `${manifest.name} ${manifest.version} · ${manifest.weights.bytes.toLocaleString()} 바이트`);
 
   step("가중치를 받아 싣는다");
+  const gpuBefore = device().memory.bytes;
   const loaded = await load(manifestUrl);
   add("환경을 받기 전에 본다", loaded.environment.ok, loaded.environment.adapter);
   add("해시가 맞으면 실린다", true,
     `텐서 ${Object.keys(loaded.model.stateDict()).length}개`);
+  // **싣고 남는 것은 가중치뿐이어야 한다.** `memory` 는 풀을 뺀 살아 있는 버퍼만 센다 —
+  // 디코드 사본이든 검증 forward 의 중간값이든, 스코프 밖에서 만들어져 남은 것이 있으면
+  // 여기 잡힌다. 풀은 `load` 가 비우므로 그쪽도 0 이어야 한다.
+  const resident = device().memory.bytes - gpuBefore;
+  const ratio = resident / manifest.weights.bytes;
+  add("싣고 남는 GPU 메모리는 가중치만큼이다", ratio <= RESIDENT_SLACK,
+    `+${(resident / 1e6).toFixed(0)} MB = 가중치의 ${ratio.toFixed(2)}배`
+    + (ratio > RESIDENT_SLACK ? ` — ${RESIDENT_SLACK}배를 넘었다: 스코프 밖에서 만든 것이 남아 있다` : "")
+    + ` · 풀 ${(device().pooled.bytes / 1e6).toFixed(0)} MB`);
 
   step("샘플을 대 본다");
   const result = await verify(loaded.model, manifest, manifestUrl);

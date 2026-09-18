@@ -15,7 +15,7 @@
  * 작은 수치 차이뿐이고, 그건 `rtol`·`atol` 이 다룰 일이다.
  */
 
-import { decode, noGrad, nn, Tensor } from "borch-ts";
+import { decode, noGrad, nn, scope, Tensor } from "borch-ts";
 
 import { BorchHubError, type Manifest } from "./manifest.js";
 import { begin, resolve, STALL_MS, type LoadOptions } from "./load.js";
@@ -68,16 +68,18 @@ export async function verify(
   manifestUrl: string,
   opts: LoadOptions = {},
 ): Promise<VerifyResult> {
-  const input = await grabTensor(
-    resolve(manifestUrl, manifest.sample.inputUrl), opts, "샘플 입력");
-  const expected = await grabTensor(
-    resolve(manifestUrl, manifest.sample.outputUrl), opts, "샘플 출력");
-
   model.eval();
-  const got = noGrad(() => model.forward(input));
-
-  const a = await got.toArray();
-  const b = await expected.toArray();
+  // **전부 스코프 안에서** — 샘플 두 개, forward, 읽기까지. 224 px forward 의 중간값
+  // 수백 개는 스코프 밖에서 만들면 돌아갈 곳이 없어 남는다(2026-09-18 실측, ViT-B/16
+  // 로드 뒤 +1,193 MB 의 큰 몫). 값은 스코프 안에서 읽어 숫자만 들고 나온다.
+  const [a, b] = await scope(async () => {
+    const input = await grabTensor(
+      resolve(manifestUrl, manifest.sample.inputUrl), opts, "샘플 입력");
+    const expected = await grabTensor(
+      resolve(manifestUrl, manifest.sample.outputUrl), opts, "샘플 출력");
+    const got = noGrad(() => model.forward(input));
+    return [await got.toArray(), await expected.toArray()];
+  });
   if (a.length !== b.length) {
     throw new BorchHubError(
       `샘플 출력의 크기가 다릅니다: 기대 ${b.length} · 나온 것 ${a.length}\n`
